@@ -1,0 +1,17 @@
+@import '@angular/material/prebuilt-themes/azure-blue.css';
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: #f8f9fa;
+  color: #212121;
+}
+
+a { text-decoration: none; }
+
+.mat-mdc-card { border-radius: 12px !important; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }

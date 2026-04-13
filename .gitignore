@@ -1,0 +1,50 @@
+# Skills / local connection config (never commit)
+skills/
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+.vs/
+*.dll
+*.exe
+*.pdb
+
+# Node
+node_modules/
+dist/
+npm-debug.log
+yarn-error.log
+.angular/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+appsettings.Development.json
+appsettings.Local.json
+*.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Database
+*.mdf
+*.ldf
+*.bak
+
+# Build artifacts
+publish/
+out/
+build/
