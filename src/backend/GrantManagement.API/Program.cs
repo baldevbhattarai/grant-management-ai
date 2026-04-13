@@ -21,6 +21,12 @@ builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IContentSuggestionService, ContentSuggestionService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 
+// ── Vector Search (Qdrant) ────────────────────────────────────────────────────
+builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
+builder.Services.AddSingleton<QdrantVectorService>();
+builder.Services.AddSingleton<IVectorSearchService>(sp => sp.GetRequiredService<QdrantVectorService>());
+builder.Services.AddHostedService<VectorIndexingService>();
+
 // ── API / Swagger ─────────────────────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();

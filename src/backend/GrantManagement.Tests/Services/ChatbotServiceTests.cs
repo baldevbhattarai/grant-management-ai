@@ -12,9 +12,20 @@ public class ChatbotServiceTests
     private readonly Mock<IGrantRepository> _grantRepo = new();
     private readonly Mock<IAIRepository> _aiRepo = new();
     private readonly Mock<IOpenAIService> _openAI = new();
+    private readonly Mock<IEmbeddingService> _embedding = new();
+    private readonly Mock<IVectorSearchService> _vectorSearch = new();
+
+    public ChatbotServiceTests()
+    {
+        // Vector search returns empty by default — tests fall back to SQL LIKE keyword path
+        _embedding.Setup(e => e.EmbedAsync(It.IsAny<string>())).ReturnsAsync(new float[768]);
+        _vectorSearch.Setup(v => v.SearchAsync(It.IsAny<float[]>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<float>()))
+                     .ReturnsAsync([]);
+    }
 
     private ChatbotService CreateSut() =>
         new(_grantRepo.Object, _aiRepo.Object, _openAI.Object,
+            _embedding.Object, _vectorSearch.Object,
             NullLogger<ChatbotService>.Instance);
 
     [Fact]

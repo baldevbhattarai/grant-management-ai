@@ -1,12 +1,16 @@
 using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Interfaces;
+using GrantManagement.Services.AI;
 using Microsoft.AspNetCore.Mvc;
 
 namespace GrantManagement.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ReportsController(IReportRepository reportRepo) : ControllerBase
+public class ReportsController(
+    IReportRepository reportRepo,
+    IEmbeddingService embeddingService,
+    IVectorSearchService vectorService) : ControllerBase
 {
     /// <summary>Get all reports for a grant</summary>
     [HttpGet("grant/{grantId:guid}")]
@@ -78,6 +82,19 @@ public class ReportsController(IReportRepository reportRepo) : ControllerBase
         section.ResponseOptions = request.ResponseOptions;
 
         await reportRepo.UpdateSectionAsync(section);
+
+        // Re-index in Qdrant after save (fire-and-forget — don't delay HTTP response)
+        if (request.ResponseText is { Length: > 10 })
+        {
+            var report = await reportRepo.GetByIdAsync(section.ReportId);
+            if (report is not null)
+                _ = VectorIndexingService.IndexSectionAsync(
+                    embeddingService, vectorService,
+                    section.SectionId, request.ResponseText,
+                    report.GrantId, section.ReportId,
+                    report.ReportingYear, report.ReportingQuarter, section.SectionName);
+        }
+
         return NoContent();
     }
 }
