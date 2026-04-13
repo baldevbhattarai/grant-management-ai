@@ -1,6 +1,6 @@
 # AI Content Suggestions & Q&A Feature - Design Document
 
-**Project:** BPHC-BHCMIS-PRS3 Progress Reporting System  
+**Project:** Grant Management AI  
 **Feature:** Smart Content Suggestions & AI-Powered Q&A  
 **Version:** 1.0  
 **Date:** April 9, 2026  

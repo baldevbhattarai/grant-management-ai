@@ -1,6 +1,6 @@
 # AI Q&A Chatbot Feature - Design Document
 
-**Project:** BPHC-BHCMIS-PRS3 Progress Reporting System  
+**Project:** Grant Management AI  
 **Feature:** AI-Powered Q&A Chatbot for Grant Data  
 **Version:** 1.0  
 **Date:** April 10, 2026  
