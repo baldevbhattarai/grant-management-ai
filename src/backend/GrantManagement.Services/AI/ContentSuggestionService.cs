@@ -90,41 +90,66 @@ public class ContentSuggestionService(
         string? keyPoints)
     {
         var sb = new System.Text.StringBuilder();
+        var hasKeyPoints = !string.IsNullOrWhiteSpace(keyPoints);
 
-        sb.AppendLine($"""
-            Generate a {sectionName} narrative for this progress report:
-
-            Grant Information:
-            - Grant Number: {grant.GrantNumber}
-            - Grant Type: {grant.GrantType}
-            - Program: {grant.ProgramName}
-            - Focus Areas: {grant.FocusAreas ?? "Not specified"}
-            - Reporting Period: {report.ReportingYear} {report.ReportingQuarter}
-            """);
-
-        if (!string.IsNullOrWhiteSpace(keyPoints))
+        // When user provides key points, lead with them so the model anchors on them first
+        if (hasKeyPoints)
         {
             sb.AppendLine($"""
+                You are writing a {sectionName} narrative for a HRSA progress report.
 
-            Key highlights for this period (MUST be incorporated prominently):
-            {keyPoints.Trim()}
-            """);
+                Grant: {grant.GrantNumber} ({grant.GrantType}) — {grant.ProgramName}
+                Reporting Period: {report.ReportingYear} {report.ReportingQuarter}
+
+                Key highlights for this period (treat these as facts — use them exactly as given, do not replace them with numbers from the previous report):
+                {keyPoints!.Trim()}
+
+                Previous report (use this to fill gaps, provide additional context, and match the writing style — but do not override the key highlights above with its numbers):
+                """);
+
+            if (!string.IsNullOrWhiteSpace(previousContent))
+            {
+                var prev = previousContent.Length > 400 ? previousContent[..400] + "…" : previousContent;
+                sb.AppendLine(prev);
+            }
+            else
+            {
+                sb.AppendLine("No previous report available.");
+            }
         }
-
-        if (!string.IsNullOrWhiteSpace(previousContent))
+        else
         {
-            var prev = previousContent.Length > 300 ? previousContent[..300] + "…" : previousContent;
-            sb.AppendLine($"\nPrevious report (for continuity): {prev}");
+            // No key points — standard prompt using all context
+            sb.AppendLine($"""
+                Generate a {sectionName} narrative for this progress report:
+
+                Grant Information:
+                - Grant Number: {grant.GrantNumber}
+                - Grant Type: {grant.GrantType}
+                - Program: {grant.ProgramName}
+                - Focus Areas: {grant.FocusAreas ?? "Not specified"}
+                - Reporting Period: {report.ReportingYear} {report.ReportingQuarter}
+                """);
+
+            if (!string.IsNullOrWhiteSpace(previousContent))
+            {
+                var prev = previousContent.Length > 300 ? previousContent[..300] + "…" : previousContent;
+                sb.AppendLine($"\nPrevious report (for continuity): {prev}");
+            }
+
+            if (examples.Count > 0)
+            {
+                var ex = examples[0];
+                var content = ex.Content?.Length > 300 ? ex.Content[..300] + "…" : ex.Content;
+                sb.AppendLine($"\nApproved example (rating {ex.ReviewerRating}/5): {content}");
+            }
         }
 
-        if (examples.Count > 0)
-        {
-            var ex = examples[0];
-            var content = ex.Content?.Length > 300 ? ex.Content[..300] + "…" : ex.Content;
-            sb.AppendLine($"\nApproved example (rating {ex.ReviewerRating}/5): {content}");
-        }
+        var instruction = hasKeyPoints
+            ? "Write a 150-200 word narrative. Lead with the key highlights, then expand with relevant context from the previous report to fill out the full picture."
+            : "Write a 150-200 word narrative. Be specific and outcome-focused.";
 
-        sb.AppendLine("\nWrite a 150-200 word narrative. Incorporate the key highlights prominently. Be specific and outcome-focused.\n\nNarrative:");
+        sb.AppendLine($"\n{instruction}\n\nNarrative:");
 
         return sb.ToString();
     }
