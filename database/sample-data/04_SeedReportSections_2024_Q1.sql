@@ -8,14 +8,14 @@ USE GrantDB;
 GO
 
 -- =============================================
--- Grant 1 (John Smith - C16) - 2024 Q1 Report
+-- Grant 1 (Alex Rivera - C16) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report1_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00001' 
+    WHERE g.GrantNumber = 'GX-2024-00001' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );
@@ -76,14 +76,14 @@ PRINT 'Inserted sections for Grant 1 - 2024 Q1';
 GO
 
 -- =============================================
--- Grant 2 (Sarah Johnson - C17 Migrant) - 2024 Q1 Report
+-- Grant 2 (Jordan Park - C17 Migrant) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report2_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00002' 
+    WHERE g.GrantNumber = 'GX-2024-00002' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );
@@ -144,14 +144,14 @@ PRINT 'Inserted sections for Grant 2 - 2024 Q1';
 GO
 
 -- =============================================
--- Grant 3 (Michael Brown - C16 Rural) - 2024 Q1 Report
+-- Grant 3 (Morgan Chen - C16 Rural) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report3_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00003' 
+    WHERE g.GrantNumber = 'GX-2024-00003' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );

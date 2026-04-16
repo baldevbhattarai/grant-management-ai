@@ -5,6 +5,8 @@ public class SuggestionRequestDto
     public Guid ReportId { get; set; }
     public string SectionName { get; set; } = string.Empty;
     public Guid? UserId { get; set; }
+    /// <summary>Optional key highlights for the current reporting period provided by the user.</summary>
+    public string? KeyPoints { get; set; }
 }
 
 public class SuggestionResponseDto

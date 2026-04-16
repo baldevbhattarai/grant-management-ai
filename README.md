@@ -18,6 +18,7 @@ AI-powered features for the BPHC grant management system — **Smart Content Sug
 7. [Running Tests](#running-tests)
 8. [Configuration Reference](#configuration-reference)
 9. [Troubleshooting](#troubleshooting)
+10. [License](#license)
 
 ---
 
@@ -200,7 +201,7 @@ Navigate to **http://localhost:4200**.
 
 ### Demo walkthrough
 
-1. **Select a demo user** from the chip selector on the Dashboard (John Smith, Sarah Johnson, etc.)
+1. **Select a demo user** from the chip selector on the Dashboard (Alex Rivera, Jordan Park, etc.)
 2. **Click "View Reports"** on any grant card
 3. The report list shows 4 Approved 2024 reports and 1 Draft 2025 Q1 report
 4. **Click "Fill Report"** on the 2025 Draft
@@ -308,14 +309,25 @@ ng build --configuration=development
 
 | Name | Email | Grant Type |
 |------|-------|-----------|
-| John Smith | john.smith@healthcenter1.org | C16 — Community Health |
-| Sarah Johnson | sarah.johnson@communityclinic.org | C17 — Migrant Health |
-| Michael Brown | michael.brown@ruralhealth.org | C16 — Community Health |
-| Emily Davis | emily.davis@urbancare.org | H80 — School-Based Health |
-| David Wilson | david.wilson@coastalhealth.org | C18 — Health Care for Homeless |
+| Alex Rivera | alex.rivera@mapleclinic.example | C16 — Community Health |
+| Jordan Park | jordan.park@sunrisehc.example | C17 — Migrant Health |
+| Morgan Chen | morgan.chen@pinecrestmed.example | C16 — Community Health |
+| Taylor Reeves | taylor.reeves@bridgewaycare.example | H80 — School-Based Health |
+| Casey Monroe | casey.monroe@lakesidehc.example | C18 — Health Care for Homeless |
 
 ---
 
 ## License
 
-Internal use only — BPHC-BHCMIS-PRS3 Project
+This project is provided for educational and demonstration purposes.
+
+You are free to use, modify, and adapt this codebase for your own projects. Attribution is appreciated but not required.
+
+For production or commercial use, review any third-party dependencies for their respective license terms:
+- [OpenAI API Terms of Use](https://openai.com/policies/terms-of-use)
+- [Qdrant License (Apache 2.0)](https://github.com/qdrant/qdrant/blob/master/LICENSE)
+- [Ollama License (MIT)](https://github.com/ollama/ollama/blob/main/LICENSE)
+- [.NET Runtime (MIT)](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT)
+- [Angular (MIT)](https://github.com/angular/angular/blob/main/LICENSE)
+
+---

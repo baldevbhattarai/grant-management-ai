@@ -41,7 +41,7 @@ Implement an AI-powered Q&A chatbot that allows users to ask natural language qu
 - **AI Platform:** OpenAI GPT-4 & Embeddings API
 - **Vector Database:** Pinecone (for semantic search)
 - **Backend:** ASP.NET WebForms (C#)
-- **Database:** SQL Server (GEMS/BHCMIS)
+- **Database:** SQL Server (GrantDB / GrantPortal)
 - **Authentication:** Existing ASP.NET authentication system
 
 ### Expected Benefits

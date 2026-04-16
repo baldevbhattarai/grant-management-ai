@@ -2,6 +2,7 @@ export interface SuggestionRequest {
   reportId: string;
   sectionName: string;
   userId: string | null;
+  keyPoints?: string | null;
 }
 
 export interface SuggestionResponse {

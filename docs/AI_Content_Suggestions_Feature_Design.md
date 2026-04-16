@@ -39,7 +39,7 @@ Implement AI-powered features to assist grantee users in completing progress rep
 - **AI Platform:** OpenAI GPT-4 & Embeddings API
 - **Vector Database:** Pinecone (or Azure AI Search)
 - **Backend:** ASP.NET WebForms (C#)
-- **Database:** SQL Server (GEMS/BHCMIS)
+- **Database:** SQL Server (GrantDB / GrantPortal)
 - **Authentication:** Existing ASP.NET authentication system
 
 ### Expected Benefits
@@ -136,7 +136,7 @@ Implement AI-powered features to assist grantee users in completing progress rep
     ↓               ↓
 ┌──────────┐  ┌──────────────┐
 │ Pinecone │  │ SQL Server   │
-│ (Vectors)│  │ (GEMS/BHCMIS)│
+│ (Vectors)│  │ (GrantDB / GrantPortal)│
 └──────────┘  └──────────────┘
 ```
 
@@ -618,7 +618,7 @@ Text Field (Q1 - Performance Narrative):
 Context-Enriched Text (what gets vectorized):
 "Question: Describe your performance during this reporting period
 Form: Performance
-Grant: C16CS12345
+Grant: GX-2024-99999
 
 Response:
 During Q1 2024, we expanded primary care services by 15%..."
@@ -1151,7 +1151,7 @@ Database Schema:
 
 Grants Table:
 - GrantId (UNIQUEIDENTIFIER, PK)
-- GrantNumber (VARCHAR) - Format: C16CS12345
+- GrantNumber (VARCHAR) - Format: GX-2024-99999
 - GrantType (VARCHAR) - Values: C16, C17, C18, H80
 - ProgramTypeCode (INT)
 - Status (VARCHAR) - Values: Active, Closed, Suspended

@@ -2,9 +2,9 @@
 
 **Project:** Grant Management AI  
 **Feature:** Smart Content Suggestions for Narrative Text Fields  
-**Version:** 1.0  
-**Date:** April 10, 2026  
-**Status:** Design Phase
+**Version:** 1.1  
+**Date:** April 15, 2026  
+**Status:** Active Development
 
 ---
 
@@ -31,14 +31,16 @@ Implement AI-powered content suggestions to assist grantee users in completing n
 ### Key Features
 1. **Smart Content Suggestions** - AI-generated suggestions for narrative text fields
 2. **Context-Aware Generation** - Uses grant info, previous reports, and approved examples
-3. **One-Click Integration** - "Get AI Suggestion" button next to text fields
-4. **Secure Access** - Row-level security ensuring users only access appropriate data
+3. **User Key Points Input** - User provides current-period highlights (e.g. "90% improvement in health service delivery") that are woven into the generated suggestion
+4. **One-Click Integration** - "Get AI Suggestion" button next to text fields
+5. **Regenerate Support** - Re-submit with updated key points without reloading the page
+6. **Secure Access** - Row-level security ensuring users only access appropriate data
 
 ### Technology Stack
 - **AI Platform:** OpenAI GPT-4 & Embeddings API
 - **Vector Database:** Pinecone (optional, for enhanced suggestions)
 - **Backend:** ASP.NET WebForms (C#)
-- **Database:** SQL Server (GEMS/BHCMIS)
+- **Database:** SQL Server (GrantDB / GrantPortal)
 - **Authentication:** Existing ASP.NET authentication system
 
 ### Expected Benefits
@@ -56,22 +58,27 @@ Implement AI-powered content suggestions to assist grantee users in completing n
 **Scenario:** Grantee user filling out Performance Narrative (Question 10 on Page1.aspx)
 
 **User Flow:**
-1. User navigates to Progress Report form (e.g., AQR/P1/Page1.aspx)
-2. User sees "Get AI Suggestion" button next to Performance Narrative text field
-3. User clicks button
-4. System shows loading indicator
-5. System analyzes:
+1. User navigates to Progress Report form
+2. User sees "Get AI Suggestion" button next to a narrative text field
+3. User optionally enters **key points for the current period** in a textarea, e.g.:
+   - `90% improvement in health service delivery`
+   - `Extended service to 3 new rural counties`
+   - `Telehealth adoption increased by 45%`
+4. User clicks "Get AI Suggestion"
+5. System shows loading indicator
+6. System analyzes:
    - Current grant information (type, program, focus areas)
    - User's previous report content (for continuity)
    - Approved examples from similar grants (for best practices)
-6. AI generates contextual suggestion (500-1000 words)
-7. Suggestion appears in preview panel
-8. User can:
+   - **User-provided key points** (current period achievements)
+7. AI generates contextual suggestion (500-1000 words) that incorporates all inputs
+8. Suggestion appears in preview panel
+9. User can:
    - **Accept** - Copy to text field
    - **Edit** - Modify suggestion before accepting
    - **Reject** - Dismiss and write manually
-   - **Regenerate** - Get alternative suggestion
-9. System logs usage and user feedback
+   - **Regenerate** - Update key points and regenerate without reloading
+10. System logs usage and user feedback
 
 **Value Proposition:**
 - **Reduces writer's block** - Provides starting point
@@ -145,7 +152,7 @@ Implement AI-powered content suggestions to assist grantee users in completing n
     ↓                                           ↓
 ┌──────────────────┐                  ┌──────────────────┐
 │  Vector Search   │                  │   SQL Server     │
-│  (Pinecone)      │                  │  (GEMS/BHCMIS)   │
+│  (Pinecone)      │                  │  (GrantDB / GrantPortal)   │
 │  • Find similar  │                  │  • Grant info    │
 │    examples      │                  │  • Previous      │
 │  • Semantic      │                  │    reports       │
@@ -821,6 +828,9 @@ Grant Information:
 - Focus Areas: {focusAreas}
 - Reporting Period: {reportingPeriod}
 
+Key Highlights for This Period (provided by the grantee):
+{keyPoints}
+
 Previous Report Content (for continuity):
 {previousContent}
 
@@ -836,16 +846,26 @@ Example 3 (Rating: 4/5):
 {example3}
 
 Instructions:
-1. Maintain consistency with the previous report
-2. Address all focus areas mentioned
-3. Follow the style and structure of the approved examples
-4. Include specific, measurable accomplishments
-5. Write 500-1000 words
-6. Use professional, clear language
-7. Focus on outcomes and impact
+1. Incorporate the grantee's key highlights prominently — these represent the most important achievements this period
+2. Maintain consistency with the previous report
+3. Address all focus areas mentioned
+4. Follow the style and structure of the approved examples
+5. Include specific, measurable accomplishments
+6. Write 500-1000 words
+7. Use professional, clear language
+8. Focus on outcomes and impact
 
 Performance Narrative:
 ```
+
+### Key Points Input — UX Guidelines
+
+- Label: **"Key highlights for this reporting period (optional)"**
+- Placeholder: `e.g. 90% improvement in health service delivery, extended to 3 new counties, telehealth adoption up 45%`
+- Input type: Multi-line textarea (4 rows)
+- Max length: 1000 characters
+- Behavior: If left blank, the prompt omits the key points section and falls back to past-report-only context
+- Regenerate: Clicking "Regenerate" re-submits with whatever is currently in the key points field
 
 ---
 
@@ -854,6 +874,7 @@ Performance Narrative:
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-10 | AI Design Team | Initial content suggestions document |
+| 1.1 | 2026-04-15 | Baldev Bhattarai | Add user key points input — user-provided period highlights woven into LLM prompt; add Regenerate UX pattern |
 
 ---
 
