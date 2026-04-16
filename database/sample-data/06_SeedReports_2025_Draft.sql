@@ -107,39 +107,36 @@ SELECT
 FROM @ReportIds;
 
 INSERT INTO ReportSections (ReportId, SectionName, SectionTitle, SectionOrder, QuestionText, ResponseType, ResponseNumber)
-SELECT 
+SELECT
     ReportId,
     'PatientsServed',
     'Total Patients Served',
     4,
     'Enter the total number of unique patients served during this quarter.',
     'Number',
-    NULL, -- Empty - user will fill
-    NULL
+    NULL -- Empty - user will fill
 FROM @ReportIds;
 
 INSERT INTO ReportSections (ReportId, SectionName, SectionTitle, SectionOrder, QuestionText, ResponseType, ResponseOptions)
-SELECT 
+SELECT
     ReportId,
     'ServicesProvided',
     'Services Provided',
     5,
     'Select all services provided during this reporting period.',
     'MultiSelect',
-    NULL, -- Empty - user will select
-    NULL
+    NULL -- Empty - user will select
 FROM @ReportIds;
 
 INSERT INTO ReportSections (ReportId, SectionName, SectionTitle, SectionOrder, QuestionText, ResponseType, ResponseSingle)
-SELECT 
+SELECT
     ReportId,
     'TelehealthAdoption',
     'Telehealth Services',
     6,
     'Are you currently providing telehealth services?',
     'Radio',
-    NULL, -- Empty - user will select
-    NULL
+    NULL -- Empty - user will select
 FROM @ReportIds;
 
 INSERT INTO ReportSections (ReportId, SectionName, SectionTitle, SectionOrder, QuestionText, ResponseType, ResponseText, MaxLength)

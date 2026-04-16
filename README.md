@@ -18,6 +18,7 @@ AI-powered features for the BPHC grant management system — **Smart Content Sug
 7. [Running Tests](#running-tests)
 8. [Configuration Reference](#configuration-reference)
 9. [Troubleshooting](#troubleshooting)
+10. [License](#license)
 
 ---
 
@@ -316,3 +317,17 @@ ng build --configuration=development
 
 ---
 
+## License
+
+This project is provided for educational and demonstration purposes.
+
+You are free to use, modify, and adapt this codebase for your own projects. Attribution is appreciated but not required.
+
+For production or commercial use, review any third-party dependencies for their respective license terms:
+- [OpenAI API Terms of Use](https://openai.com/policies/terms-of-use)
+- [Qdrant License (Apache 2.0)](https://github.com/qdrant/qdrant/blob/master/LICENSE)
+- [Ollama License (MIT)](https://github.com/ollama/ollama/blob/main/LICENSE)
+- [.NET Runtime (MIT)](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT)
+- [Angular (MIT)](https://github.com/angular/angular/blob/main/LICENSE)
+
+---
