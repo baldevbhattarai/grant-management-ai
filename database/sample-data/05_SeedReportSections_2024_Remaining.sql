@@ -7,7 +7,7 @@ USE GrantDB;
 GO
 
 -- =============================================
--- Grant 4 (Emily Davis - H80 School-Based) - 2024 Q1 Report
+-- Grant 4 (Taylor Reeves - H80 School-Based) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report4_Q1 UNIQUEIDENTIFIER = (
@@ -75,7 +75,7 @@ PRINT 'Inserted sections for Grant 4 - 2024 Q1';
 GO
 
 -- =============================================
--- Grant 5 (David Wilson - C18 Homeless) - 2024 Q1 Report
+-- Grant 5 (Casey Monroe - C18 Homeless) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report5_Q1 UNIQUEIDENTIFIER = (

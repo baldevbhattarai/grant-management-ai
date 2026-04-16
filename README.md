@@ -200,7 +200,7 @@ Navigate to **http://localhost:4200**.
 
 ### Demo walkthrough
 
-1. **Select a demo user** from the chip selector on the Dashboard (John Smith, Sarah Johnson, etc.)
+1. **Select a demo user** from the chip selector on the Dashboard (Alex Rivera, Jordan Park, etc.)
 2. **Click "View Reports"** on any grant card
 3. The report list shows 4 Approved 2024 reports and 1 Draft 2025 Q1 report
 4. **Click "Fill Report"** on the 2025 Draft

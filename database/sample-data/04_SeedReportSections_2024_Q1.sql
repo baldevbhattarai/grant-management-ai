@@ -8,7 +8,7 @@ USE GrantDB;
 GO
 
 -- =============================================
--- Grant 1 (John Smith - C16) - 2024 Q1 Report
+-- Grant 1 (Alex Rivera - C16) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report1_Q1 UNIQUEIDENTIFIER = (
@@ -76,7 +76,7 @@ PRINT 'Inserted sections for Grant 1 - 2024 Q1';
 GO
 
 -- =============================================
--- Grant 2 (Sarah Johnson - C17 Migrant) - 2024 Q1 Report
+-- Grant 2 (Jordan Park - C17 Migrant) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report2_Q1 UNIQUEIDENTIFIER = (
@@ -144,7 +144,7 @@ PRINT 'Inserted sections for Grant 2 - 2024 Q1';
 GO
 
 -- =============================================
--- Grant 3 (Michael Brown - C16 Rural) - 2024 Q1 Report
+-- Grant 3 (Morgan Chen - C16 Rural) - 2024 Q1 Report
 -- =============================================
 
 DECLARE @Report3_Q1 UNIQUEIDENTIFIER = (
