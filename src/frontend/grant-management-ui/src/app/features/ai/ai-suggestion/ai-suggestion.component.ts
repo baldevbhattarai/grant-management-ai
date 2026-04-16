@@ -17,6 +17,19 @@ import { AiService } from '../../../core/services/ai.service';
   ],
   template: `
     <div class="ai-suggestion-wrap">
+
+      <!-- Key points input -->
+      <div class="key-points-wrap">
+        <label class="key-points-label">
+          <mat-icon style="font-size:15px;vertical-align:middle;margin-right:4px">lightbulb</mat-icon>
+          Key highlights for this period <span class="optional">(optional)</span>
+        </label>
+        <textarea class="key-points-input" [(ngModel)]="keyPoints" rows="3"
+          placeholder="e.g. 90% improvement in health service delivery, extended to 3 new rural counties, telehealth adoption up 45%"
+          maxlength="1000"></textarea>
+        <div class="key-points-hint">{{ keyPoints.length }}/1000 — include notable achievements to personalise the suggestion</div>
+      </div>
+
       <!-- Trigger button -->
       <button mat-stroked-button color="accent" class="suggest-btn"
         [disabled]="loading" (click)="getSuggestion()">
@@ -39,8 +52,10 @@ import { AiService } from '../../../core/services/ai.service';
           <button mat-flat-button color="primary" (click)="accept()">
             <mat-icon>check</mat-icon> Accept
           </button>
-          <button mat-stroked-button color="accent" (click)="getSuggestion()">
-            <mat-icon>refresh</mat-icon> Regenerate
+          <button mat-stroked-button color="accent" [disabled]="loading" (click)="getSuggestion()">
+            <mat-spinner *ngIf="loading" diameter="14" style="display:inline-block;margin-right:4px"></mat-spinner>
+            <mat-icon *ngIf="!loading">refresh</mat-icon>
+            {{ loading ? 'Regenerating…' : 'Regenerate' }}
           </button>
           <button mat-stroked-button (click)="dismiss()">
             <mat-icon>close</mat-icon> Dismiss
@@ -52,6 +67,22 @@ import { AiService } from '../../../core/services/ai.service';
   styles: [`
     .ai-suggestion-wrap { margin-top: 6px; }
     .suggest-btn { font-size: 0.82rem; }
+
+    .key-points-wrap { margin-bottom: 10px; }
+    .key-points-label {
+      display: block; font-size: 0.82rem; font-weight: 600;
+      color: #555; margin-bottom: 4px;
+    }
+    .optional { font-weight: 400; color: #999; }
+    .key-points-input {
+      width: 100%; box-sizing: border-box; border: 1px solid #ccc;
+      border-radius: 6px; padding: 8px 10px; font-size: 0.87rem;
+      font-family: inherit; resize: vertical; background: #fafafa;
+      transition: border-color 0.2s;
+    }
+    .key-points-input:focus { outline: none; border-color: #9c27b0; background: #fff; }
+    .key-points-hint { font-size: 0.75rem; color: #aaa; margin-top: 3px; text-align: right; }
+
     .suggestion-panel {
       margin-top: 12px; border: 1px solid #ce93d8; border-radius: 8px;
       padding: 16px; background: #fce4ec10;
@@ -80,6 +111,7 @@ export class AiSuggestionComponent {
 
   loading = false;
   suggestion: string | null = null;
+  keyPoints = '';
   tokensUsed = 0;
   cost = 0;
   lastLogId: string | null = null;
@@ -90,7 +122,8 @@ export class AiSuggestionComponent {
     this.aiService.getSuggestion({
       reportId: this.reportId,
       sectionName: this.sectionName,
-      userId: this.userId || null
+      userId: this.userId || null,
+      keyPoints: this.keyPoints.trim() || null
     }).subscribe({
       next: res => {
         this.loading = false;

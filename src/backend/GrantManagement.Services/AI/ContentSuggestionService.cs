@@ -34,7 +34,7 @@ public class ContentSuggestionService(
 
         // 4. Build prompt
         var systemPrompt = BuildSystemPrompt();
-        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples);
+        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples, request.KeyPoints);
 
         // 5. Call OpenAI
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 400);
@@ -86,7 +86,8 @@ public class ContentSuggestionService(
 
     private static string BuildUserPrompt(
         Grant grant, Report report, string sectionName,
-        string? previousContent, List<AIApprovedContent> examples)
+        string? previousContent, List<AIApprovedContent> examples,
+        string? keyPoints)
     {
         var sb = new System.Text.StringBuilder();
 
@@ -101,6 +102,15 @@ public class ContentSuggestionService(
             - Reporting Period: {report.ReportingYear} {report.ReportingQuarter}
             """);
 
+        if (!string.IsNullOrWhiteSpace(keyPoints))
+        {
+            sb.AppendLine($"""
+
+            Key highlights for this period (MUST be incorporated prominently):
+            {keyPoints.Trim()}
+            """);
+        }
+
         if (!string.IsNullOrWhiteSpace(previousContent))
         {
             var prev = previousContent.Length > 300 ? previousContent[..300] + "…" : previousContent;
@@ -114,7 +124,7 @@ public class ContentSuggestionService(
             sb.AppendLine($"\nApproved example (rating {ex.ReviewerRating}/5): {content}");
         }
 
-        sb.AppendLine("\nWrite a 150-200 word narrative for the section above. Be specific and outcome-focused.\n\nNarrative:");
+        sb.AppendLine("\nWrite a 150-200 word narrative. Incorporate the key highlights prominently. Be specific and outcome-focused.\n\nNarrative:");
 
         return sb.ToString();
     }
