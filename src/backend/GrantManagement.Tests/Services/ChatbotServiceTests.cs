@@ -51,7 +51,7 @@ public class ChatbotServiceTests
         var grant = new Grant
         {
             GrantId = grantId,
-            GrantNumber = "C16CS00001",
+            GrantNumber = "GX-2024-00001",
             GrantType = "C16",
             ProgramName = "Community Health"
         };
@@ -78,7 +78,7 @@ public class ChatbotServiceTests
     public async Task Ask_WhenOpenAIFails_ReturnsFailure()
     {
         var grantId = Guid.NewGuid();
-        var grant = new Grant { GrantId = grantId, GrantNumber = "C16CS00001", ProgramName = "Health", GrantType = "C16" };
+        var grant = new Grant { GrantId = grantId, GrantNumber = "GX-2024-00001", ProgramName = "Health", GrantType = "C16" };
 
         _grantRepo.Setup(r => r.GetByIdAsync(grantId)).ReturnsAsync(grant);
         _aiRepo.Setup(r => r.SearchSectionsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()))
@@ -102,7 +102,7 @@ public class ChatbotServiceTests
     {
         var grantId = Guid.NewGuid();
         var reportId = Guid.NewGuid();
-        var grant = new Grant { GrantId = grantId, GrantNumber = "C16CS00001", ProgramName = "Health", GrantType = "C16" };
+        var grant = new Grant { GrantId = grantId, GrantNumber = "GX-2024-00001", ProgramName = "Health", GrantType = "C16" };
 
         var section = new ReportSection
         {

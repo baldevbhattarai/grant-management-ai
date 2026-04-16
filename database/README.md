@@ -89,11 +89,11 @@ SELECT 'AI_ApprovedContent', COUNT(*) FROM AI_ApprovedContent;
 
 | Email | Name | Organization | Grant Type |
 |-------|------|--------------|------------|
-| john.smith@healthcenter1.org | John Smith | Community Health Center of Springfield | C16 |
-| sarah.johnson@communityclinic.org | Sarah Johnson | Migrant Community Clinic | C17 |
-| michael.brown@ruralhealth.org | Michael Brown | Rural Health Services | C16 |
-| emily.davis@urbancare.org | Emily Davis | Urban Care Center | H80 |
-| david.wilson@coastalhealth.org | David Wilson | Coastal Health Network | C18 |
+| alex.rivera@mapleclinic.example | Alex Rivera | Community Health Center of Springfield | C16 |
+| jordan.park@sunrisehc.example | Jordan Park | Migrant Community Clinic | C17 |
+| morgan.chen@pinecrestmed.example | Morgan Chen | Rural Health Services | C16 |
+| taylor.reeves@bridgewaycare.example | Taylor Reeves | Urban Care Center | H80 |
+| casey.monroe@lakesidehc.example | Casey Monroe | Coastal Health Network | C18 |
 
 ## Connection String
 

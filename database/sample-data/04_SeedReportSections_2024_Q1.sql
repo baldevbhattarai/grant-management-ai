@@ -15,7 +15,7 @@ DECLARE @Report1_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00001' 
+    WHERE g.GrantNumber = 'GX-2024-00001' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );
@@ -83,7 +83,7 @@ DECLARE @Report2_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00002' 
+    WHERE g.GrantNumber = 'GX-2024-00002' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );
@@ -151,7 +151,7 @@ DECLARE @Report3_Q1 UNIQUEIDENTIFIER = (
     SELECT r.ReportId 
     FROM Reports r
     JOIN Grants g ON r.GrantId = g.GrantId
-    WHERE g.GrantNumber = 'H80CS00003' 
+    WHERE g.GrantNumber = 'GX-2024-00003' 
     AND r.ReportingYear = 2024 
     AND r.ReportingQuarter = 'Q1'
 );

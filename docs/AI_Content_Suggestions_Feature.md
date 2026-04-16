@@ -40,7 +40,7 @@ Implement AI-powered content suggestions to assist grantee users in completing n
 - **AI Platform:** OpenAI GPT-4 & Embeddings API
 - **Vector Database:** Pinecone (optional, for enhanced suggestions)
 - **Backend:** ASP.NET WebForms (C#)
-- **Database:** SQL Server (GEMS/BHCMIS)
+- **Database:** SQL Server (GrantDB / GrantPortal)
 - **Authentication:** Existing ASP.NET authentication system
 
 ### Expected Benefits
@@ -152,7 +152,7 @@ Implement AI-powered content suggestions to assist grantee users in completing n
     ↓                                           ↓
 ┌──────────────────┐                  ┌──────────────────┐
 │  Vector Search   │                  │   SQL Server     │
-│  (Pinecone)      │                  │  (GEMS/BHCMIS)   │
+│  (Pinecone)      │                  │  (GrantDB / GrantPortal)   │
 │  • Find similar  │                  │  • Grant info    │
 │    examples      │                  │  • Previous      │
 │  • Semantic      │                  │    reports       │

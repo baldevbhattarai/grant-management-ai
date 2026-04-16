@@ -314,11 +314,11 @@ CREATE INDEX IX_AI_ApprovedContent_Program_Section ON AI_ApprovedContent(Program
 
 ### Sample Users
 ```
-1. John Smith (john.smith@healthcenter1.org) - C16 Grant
-2. Sarah Johnson (sarah.johnson@communityclinic.org) - C17 Grant
-3. Michael Brown (michael.brown@ruralhealth.org) - C16 Grant
-4. Emily Davis (emily.davis@urbancare.org) - H80 Grant
-5. David Wilson (david.wilson@coastalhealth.org) - C18 Grant
+1. Alex Rivera (alex.rivera@mapleclinic.example) - C16 Grant
+2. Jordan Park (jordan.park@sunrisehc.example) - C17 Grant
+3. Morgan Chen (morgan.chen@pinecrestmed.example) - C16 Grant
+4. Taylor Reeves (taylor.reeves@bridgewaycare.example) - H80 Grant
+5. Casey Monroe (casey.monroe@lakesidehc.example) - C18 Grant
 ```
 
 ### Sample Grant Types
@@ -355,7 +355,7 @@ H80 - School-Based Health Center
 
 ### Sample Narrative Content (2024 Q1 - Approved)
 
-**Example 1: John Smith - C16 Grant - Performance Narrative**
+**Example 1: Alex Rivera - C16 Grant - Performance Narrative**
 ```
 During Q1 2024, our community health center made significant progress toward our grant objectives. 
 We successfully expanded our telehealth services, reaching 450 patients who previously faced 
@@ -369,7 +369,7 @@ satisfaction scores averaging 4.6 out of 5. Our sliding fee scale program ensure
 patients received affordable care regardless of insurance status.
 ```
 
-**Example 2: Sarah Johnson - C17 Grant - Key Accomplishments**
+**Example 2: Jordan Park - C17 Grant - Key Accomplishments**
 ```
 Our migrant health center achieved several key milestones this quarter. First, we launched a mobile 
 health unit that traveled to 12 agricultural sites, providing on-site care to 380 migrant workers. 
@@ -402,7 +402,7 @@ children under 5, exceeding our target of 85%.
    - All indexes created
 
 2. ✅ **Populate Sample Data**
-   - 5 users inserted (John Smith C16, Sarah Johnson C17, Michael Brown C16, Emily Davis H80, David Wilson C18)
+   - 5 users inserted (Alex Rivera C16, Jordan Park C17, Morgan Chen C16, Taylor Reeves H80, Casey Monroe C18)
    - 5 grants inserted
    - 25 reports inserted (20 × 2024 Approved + 5 × 2025 Draft)
    - 35 report sections inserted with realistic narratives

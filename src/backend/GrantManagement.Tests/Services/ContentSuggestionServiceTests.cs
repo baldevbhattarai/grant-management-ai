@@ -28,7 +28,7 @@ public class ContentSuggestionServiceTests
         var grant = new Grant
         {
             GrantId = grantId,
-            GrantNumber = "C16CS00001",
+            GrantNumber = "GX-2024-00001",
             GrantType = "C16",
             ProgramName = "Community Health",
             ProgramTypeCode = 60
@@ -123,7 +123,7 @@ public class ContentSuggestionServiceTests
         // Arrange
         var grantId = Guid.NewGuid();
         var reportId = Guid.NewGuid();
-        var grant = new Grant { GrantId = grantId, GrantNumber = "C16CS00001", ProgramTypeCode = 60 };
+        var grant = new Grant { GrantId = grantId, GrantNumber = "GX-2024-00001", ProgramTypeCode = 60 };
         var report = new Report { ReportId = reportId, GrantId = grantId, Grant = grant, Sections = [] };
         string? capturedUserPrompt = null;
 
