@@ -316,6 +316,3 @@ ng build --configuration=development
 
 ---
 
-## License
-
-Internal use only — BPHC-BHCMIS-PRS3 Project
