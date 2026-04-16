@@ -11,32 +11,41 @@ public class ChatbotService(
     IOpenAIService openAI,
     IEmbeddingService embeddingService,
     IVectorSearchService vectorService,
+    IChatRepository chatRepo,
     ILogger<ChatbotService> logger) : IChatbotService
 {
+    private const int MaxHistoryTurns = 5;
+
     public async Task<ChatResponseDto> AskAsync(ChatRequestDto request)
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
-        // 1. Load grant context
+        // 1. Resolve session — reuse existing or start a new one
+        var sessionId = request.ConversationId ?? Guid.NewGuid();
+
+        // 2. Load grant context
         var grant = await grantRepo.GetByIdAsync(request.GrantId);
         if (grant is null)
             return new ChatResponseDto { Success = false, ErrorMessage = "Grant not found" };
 
-        // 2. Semantic vector search — falls back to SQL LIKE if Qdrant unavailable
+        // 3. Semantic vector search — falls back to SQL LIKE if Qdrant unavailable
         List<ChatSourceDto> sources;
         string contextBlock;
         (sources, contextBlock) = await BuildContextAsync(request.Question, request.GrantId);
 
-        // 3. Build prompt with context
-        var systemPrompt = BuildSystemPrompt(grant);
-        var userPrompt = BuildUserPrompt(request.Question, contextBlock);
+        // 4. Load conversation history for this session
+        var history = await chatRepo.GetHistoryAsync(sessionId, MaxHistoryTurns);
 
-        // 4. Call LLM
+        // 5. Build prompt with report context + history + current question
+        var systemPrompt = BuildSystemPrompt(grant);
+        var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
+
+        // 6. Call LLM
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 300);
 
         sw.Stop();
 
-        // 5. Log usage
+        // 7. Log usage
         await aiRepo.LogUsageAsync(new AIUsageLog
         {
             UserId = request.UserId,
@@ -58,11 +67,15 @@ public class ChatbotService(
             return new ChatResponseDto { Success = false, ErrorMessage = result.Error };
         }
 
+        // 8. Persist this turn to conversation history
+        var userId = request.UserId ?? Guid.Empty;
+        await chatRepo.SaveTurnAsync(sessionId, userId, request.GrantId, request.Question, result.Content!);
+
         return new ChatResponseDto
         {
             Success = true,
             Answer = result.Content,
-            ConversationId = request.ConversationId ?? Guid.NewGuid(),
+            ConversationId = sessionId,
             Sources = sources
         };
     }
@@ -140,17 +153,32 @@ public class ChatbotService(
     }
 
     private static string BuildSystemPrompt(Core.Entities.Grant grant) =>
-        $"You are an assistant for HRSA grant {grant.GrantNumber} ({grant.GrantType}). Answer based only on the provided report content. Be brief and factual.";
+        $"You are an assistant for HRSA grant {grant.GrantNumber} ({grant.GrantType}). Answer based only on the provided report content and conversation history. Be brief and factual.";
 
-    private static string BuildUserPrompt(string question, string contextBlock)
+    private static string BuildUserPrompt(string question, string contextBlock, List<Core.Entities.ChatConversation> history)
     {
         var sb = new System.Text.StringBuilder();
+
+        // Report context from vector/keyword search
         if (!string.IsNullOrWhiteSpace(contextBlock))
         {
             sb.AppendLine(contextBlock);
             sb.AppendLine();
         }
-        sb.AppendLine($"Question: {question}");
+
+        // Conversation history (prior turns in this session)
+        if (history.Count > 0)
+        {
+            sb.AppendLine("Conversation so far:");
+            foreach (var msg in history)
+            {
+                var label = msg.Role == "user" ? "User" : "Assistant";
+                sb.AppendLine($"{label}: {msg.Content}");
+            }
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"Current question: {question}");
         return sb.ToString();
     }
 

@@ -85,7 +85,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         modelBuilder.Entity<ChatConversation>(e =>
         {
             e.HasKey(c => c.ConversationId);
-            e.Property(c => c.Role).HasMaxLength(50).IsRequired();
+            e.Property(c => c.Role).HasMaxLength(20).IsRequired();
+            e.HasIndex(c => new { c.SessionId, c.CreatedDate });
         });
     }
 }

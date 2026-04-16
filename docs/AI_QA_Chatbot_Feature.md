@@ -1124,11 +1124,92 @@ SQL:
 
 ---
 
+## Conversation Memory
+
+### Overview
+
+The chatbot maintains conversation context within a browser session. Each exchange (question + answer) is persisted to the `ChatConversations` table and injected into subsequent prompts, enabling natural follow-up questions without the user repeating context.
+
+**Scope:** Session-only. Refreshing the page or opening a new tab starts a fresh conversation. No cross-session persistence is required for the current implementation.
+
+---
+
+### How It Works
+
+**Session lifecycle:**
+1. First message → frontend sends `conversationId: null` → backend generates a new `SessionId` (Guid) and returns it
+2. Subsequent messages → frontend sends the same `SessionId` → backend loads prior turns and includes them in the prompt
+3. Panel closed / page refreshed → frontend state cleared → next message starts a new session
+
+**Prompt structure with history:**
+```
+[System]: You are an assistant for grant GX-2024-00001 (C16)...
+
+[Report context — from vector search or keyword fallback]:
+  [2024 Q1 - PerformanceNarrative]: We served 2,850 patients...
+  [2024 Q2 - PerformanceNarrative]: We served 3,100 patients...
+
+[Conversation so far]:
+  User: What was the patient count in Q1 2024?
+  Assistant: You served 2,850 patients in Q1 2024.
+  User: And in Q2?
+  Assistant: In Q2 2024, you served 3,100 patients.
+
+[Current question]: How does that compare to the full year?
+```
+
+**History depth:** Last 5 turns (10 messages: 5 user + 5 assistant) are loaded. Older turns are dropped to protect the LLM context window. For small local models (qwen2.5-coder:7b), this is the safe limit.
+
+---
+
+### Data Model
+
+**`ChatConversations` table (updated schema):**
+
+```sql
+CREATE TABLE ChatConversations (
+    ConversationId  UNIQUEIDENTIFIER PRIMARY KEY DEFAULT NEWID(),  -- per-message PK
+    SessionId       UNIQUEIDENTIFIER NOT NULL,   -- groups messages into one conversation
+    UserId          UNIQUEIDENTIFIER NOT NULL,
+    GrantId         UNIQUEIDENTIFIER NOT NULL,
+    Role            NVARCHAR(20) NOT NULL,       -- 'user' | 'assistant'
+    Content         NVARCHAR(MAX) NOT NULL,
+    CreatedDate     DATETIME DEFAULT GETDATE(),
+    CONSTRAINT FK_ChatConversations_Users FOREIGN KEY (UserId) REFERENCES Users(UserId)
+);
+CREATE INDEX IX_ChatConversations_Session ON ChatConversations(SessionId, CreatedDate);
+```
+
+**Key distinction:** `ConversationId` is a per-message primary key. `SessionId` is the conversation group identifier passed between frontend and backend.
+
+---
+
+### Architecture Changes
+
+**New interface — `IChatRepository`:**
+```csharp
+Task SaveTurnAsync(Guid sessionId, Guid userId, Guid grantId, string question, string answer);
+Task<List<ChatConversation>> GetHistoryAsync(Guid sessionId, int maxTurns = 5);
+```
+
+**`ChatbotService` flow (updated):**
+1. Generate or reuse `SessionId` from request
+2. Load history via `IChatRepository.GetHistoryAsync`
+3. Build prompt: report context + history block + current question
+4. Call LLM
+5. Save Q+A pair via `IChatRepository.SaveTurnAsync`
+6. Return response with `SessionId` (as `ConversationId` in the DTO)
+
+**Frontend (`chat-widget.component.ts`):** No changes needed — `conversationId` is already tracked in component state and sent with every request.
+
+---
+
 ## Document Control
 
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0 | 2026-04-10 | AI Design Team | Initial Q&A chatbot document |
+| 1.1 | 2026-04-16 | AI Design Team | Added conversation memory — session-scoped history, ChatConversations schema update, IChatRepository |
 
 ---
 
