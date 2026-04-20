@@ -14,6 +14,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IGrantRepository, GrantRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IAIRepository, AIRepository>();
+builder.Services.AddScoped<IChatRepository, ChatRepository>();
 
 // ── AI Services ───────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("openai");

@@ -14,6 +14,7 @@ public class ChatbotServiceTests
     private readonly Mock<IOpenAIService> _openAI = new();
     private readonly Mock<IEmbeddingService> _embedding = new();
     private readonly Mock<IVectorSearchService> _vectorSearch = new();
+    private readonly Mock<IChatRepository> _chatRepo = new();
 
     public ChatbotServiceTests()
     {
@@ -21,12 +22,17 @@ public class ChatbotServiceTests
         _embedding.Setup(e => e.EmbedAsync(It.IsAny<string>())).ReturnsAsync(new float[768]);
         _vectorSearch.Setup(v => v.SearchAsync(It.IsAny<float[]>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<float>()))
                      .ReturnsAsync([]);
+        // History returns empty by default — no prior conversation
+        _chatRepo.Setup(c => c.GetHistoryAsync(It.IsAny<Guid>(), It.IsAny<int>()))
+                 .ReturnsAsync([]);
+        _chatRepo.Setup(c => c.SaveTurnAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()))
+                 .Returns(Task.CompletedTask);
     }
 
     private ChatbotService CreateSut() =>
         new(_grantRepo.Object, _aiRepo.Object, _openAI.Object,
             _embedding.Object, _vectorSearch.Object,
-            NullLogger<ChatbotService>.Instance);
+            _chatRepo.Object, NullLogger<ChatbotService>.Instance);
 
     [Fact]
     public async Task Ask_WhenGrantNotFound_ReturnsFailure()
