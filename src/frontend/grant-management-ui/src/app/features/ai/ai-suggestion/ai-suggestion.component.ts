@@ -8,6 +8,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
 import { AiService } from '../../../core/services/ai.service';
 
+interface DiffToken { text: string; type: 'same' | 'added' | 'removed'; }
+
 @Component({
   selector: 'app-ai-suggestion',
   standalone: true,
@@ -66,6 +68,19 @@ import { AiService } from '../../../core/services/ai.service';
             <span class="meta">{{ tokensUsed ? (tokensUsed + ' tokens · ~$' + (cost | number:'1.4-4')) : '' }}</span>
           </div>
           <textarea class="suggestion-text" [(ngModel)]="suggestion" rows="8"></textarea>
+          <!-- Diff view -->
+          <div *ngIf="showDiff && diffTokens.length > 0" class="diff-view">
+            <div class="diff-legend">
+              <span class="diff-added-legend">+ added</span>
+              <span class="diff-removed-legend">- removed</span>
+            </div>
+            <div class="diff-content">
+              <span *ngFor="let t of diffTokens"
+                [class.diff-added]="t.type === 'added'"
+                [class.diff-removed]="t.type === 'removed'">{{ t.text }}</span>
+            </div>
+          </div>
+
           <!-- Refinement instruction for regeneration -->
           <div class="refinement-row">
             <input class="refinement-input" [(ngModel)]="regenerationFeedback"
@@ -75,6 +90,10 @@ import { AiService } from '../../../core/services/ai.service';
           <div class="result-actions">
             <button mat-stroked-button color="primary" class="action-btn" (click)="accept()">
               <mat-icon>check</mat-icon> Accept
+            </button>
+            <button *ngIf="existingContent" mat-stroked-button class="action-btn diff-btn"
+              (click)="toggleDiff()" type="button">
+              <mat-icon>compare_arrows</mat-icon> {{ showDiff ? 'Hide diff' : 'Show diff' }}
             </button>
             <button mat-button class="action-btn dismiss-btn" (click)="dismiss()">
               <mat-icon>close</mat-icon> Dismiss
@@ -168,6 +187,14 @@ import { AiService } from '../../../core/services/ai.service';
       font-family: inherit; resize: vertical; background: #fff;
     }
     .suggestion-text:focus { outline: none; border-color: #9c27b0; }
+    .diff-view { margin-top: 8px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; background: #fafafa; }
+    .diff-legend { display: flex; gap: 12px; font-size: 0.72rem; margin-bottom: 6px; }
+    .diff-added-legend { color: #16a34a; font-weight: 600; }
+    .diff-removed-legend { color: #dc2626; font-weight: 600; text-decoration: line-through; }
+    .diff-content { font-size: 0.85rem; line-height: 1.6; white-space: pre-wrap; }
+    .diff-added { background: #dcfce7; color: #166534; border-radius: 2px; }
+    .diff-removed { background: #fee2e2; color: #991b1b; text-decoration: line-through; border-radius: 2px; }
+    .diff-btn { color: #6a1b9a; border-color: #ce93d8; }
     .refinement-row { margin-top: 8px; }
     .refinement-input {
       width: 100%; box-sizing: border-box; border: 1px solid #e1bee7; border-radius: 6px;
@@ -184,6 +211,7 @@ export class AiSuggestionComponent {
   @Input() reportId!: string;
   @Input() sectionName!: string;
   @Input() userId: string = 'demo-user';
+  @Input() existingContent: string = '';
   @Output() suggestionAccepted = new EventEmitter<string>();
 
   private aiService = inject(AiService);
@@ -202,6 +230,8 @@ export class AiSuggestionComponent {
   cost = 0;
   qualityScore: number | null = null;
   lastLogId: string | null = null;
+  showDiff = false;
+  diffTokens: DiffToken[] = [];
 
   getSuggestion() {
     this.loading = true;
@@ -264,5 +294,36 @@ export class AiSuggestionComponent {
       this.aiService.sendFeedback({ logId: this.lastLogId, userAction: 'Rejected' }).subscribe();
     }
     this.suggestion = null;
+    this.showDiff = false;
+  }
+
+  toggleDiff() {
+    this.showDiff = !this.showDiff;
+    if (this.showDiff && this.diffTokens.length === 0)
+      this.diffTokens = this.computeDiff(this.existingContent, this.suggestion ?? '');
+  }
+
+  // Simple word-level diff using LCS
+  private computeDiff(oldText: string, newText: string): DiffToken[] {
+    const oldWords = oldText.split(/(\s+)/);
+    const newWords = newText.split(/(\s+)/);
+    const m = oldWords.length, n = newWords.length;
+    const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++)
+      for (let j = 1; j <= n; j++)
+        dp[i][j] = oldWords[i-1] === newWords[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
+
+    const tokens: DiffToken[] = [];
+    let i = m, j = n;
+    while (i > 0 || j > 0) {
+      if (i > 0 && j > 0 && oldWords[i-1] === newWords[j-1]) {
+        tokens.unshift({ text: oldWords[i-1], type: 'same' }); i--; j--;
+      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+        tokens.unshift({ text: newWords[j-1], type: 'added' }); j--;
+      } else {
+        tokens.unshift({ text: oldWords[i-1], type: 'removed' }); i--;
+      }
+    }
+    return tokens;
   }
 }
