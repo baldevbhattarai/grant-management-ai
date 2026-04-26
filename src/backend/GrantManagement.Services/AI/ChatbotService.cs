@@ -94,6 +94,44 @@ public class ChatbotService(
         };
     }
 
+    public async IAsyncEnumerable<string> AskStreamAsync(ChatRequestDto request)
+    {
+        var sessionId = request.ConversationId ?? Guid.NewGuid();
+
+        var grant = await grantRepo.GetByIdAsync(request.GrantId);
+        if (grant is null) { yield return "[ERROR: Grant not found]"; yield break; }
+
+        var history = await chatRepo.GetHistoryAsync(sessionId, MaxHistoryTurns);
+        var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
+        var (_, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+
+        var systemPrompt = BuildSystemPrompt(grant, confidenceScore);
+        var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
+
+        var fullAnswer = new System.Text.StringBuilder();
+
+        // Yield the conversation ID as the very first SSE token so the client can track the session
+        yield return $"[SESSION:{sessionId}]";
+
+        await foreach (var token in openAI.StreamAsync(systemPrompt, userPrompt, maxTokens: 300))
+        {
+            fullAnswer.Append(token);
+            yield return token;
+        }
+
+        // Persist turn after streaming completes (fire-and-forget errors are swallowed by the background task)
+        var userId = request.UserId ?? Guid.Empty;
+        var answerText = fullAnswer.ToString();
+        if (!string.IsNullOrWhiteSpace(answerText))
+        {
+            _ = Task.Run(async () =>
+            {
+                await chatRepo.SaveTurnAsync(sessionId, userId, request.GrantId, request.Question, answerText);
+                await TrySummarizeSessionAsync(sessionId, userId, request.GrantId, grant);
+            });
+        }
+    }
+
     // Checks if the session has exceeded SummarizationThreshold turns and collapses old turns into a summary.
     private async Task TrySummarizeSessionAsync(Guid sessionId, Guid userId, Guid grantId, Core.Entities.Grant grant)
     {

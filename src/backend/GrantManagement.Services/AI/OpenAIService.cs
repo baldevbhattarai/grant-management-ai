@@ -8,6 +8,7 @@ namespace GrantManagement.Services.AI;
 public interface IOpenAIService
 {
     Task<OpenAIResult> CompleteAsync(string systemPrompt, string userPrompt, int maxTokens = 1500);
+    IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500);
 }
 
 public record OpenAIResult(bool Success, string? Content, int PromptTokens, int CompletionTokens, string? Error);
@@ -21,6 +22,127 @@ public class OpenAIService(IHttpClientFactory httpClientFactory, IConfiguration 
         return provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
             ? await CallClaude(systemPrompt, userPrompt, maxTokens)
             : await CallOllama(systemPrompt, userPrompt, maxTokens);
+    }
+
+    public async IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500)
+    {
+        var provider = config["AI:Provider"] ?? "Ollama";
+
+        var stream = provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
+            ? StreamClaude(systemPrompt, userPrompt, maxTokens)
+            : StreamOllama(systemPrompt, userPrompt, maxTokens);
+
+        await foreach (var token in stream)
+            yield return token;
+    }
+
+    // ── Ollama streaming ──────────────────────────────────────────────────────
+    private async IAsyncEnumerable<string> StreamOllama(string systemPrompt, string userPrompt, int maxTokens)
+    {
+        var baseUrl = config["AI:Ollama:BaseUrl"] ?? "http://localhost:11434/v1";
+        var model = config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b";
+        var url = $"{baseUrl.TrimEnd('/')}/chat/completions";
+
+        var client = httpClientFactory.CreateClient("openai");
+        client.DefaultRequestHeaders.Clear();
+
+        var payload = new
+        {
+            model,
+            messages = new[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt }
+            },
+            max_tokens = maxTokens,
+            temperature = 0.7,
+            stream = true
+        };
+
+        using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, url)
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(payload)
+        };
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
+
+        using var response = await client.SendAsync(request, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+        if (!response.IsSuccessStatusCode) yield break;
+
+        using var stream = await response.Content.ReadAsStreamAsync();
+        using var reader = new System.IO.StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:")) continue;
+            var data = line["data:".Length..].Trim();
+            if (data == "[DONE]") break;
+
+            using var doc = System.Text.Json.JsonDocument.Parse(data);
+            var delta = doc.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("delta");
+
+            if (delta.TryGetProperty("content", out var content) &&
+                content.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var token = content.GetString();
+                if (!string.IsNullOrEmpty(token)) yield return token;
+            }
+        }
+    }
+
+    // ── Claude streaming ──────────────────────────────────────────────────────
+    private async IAsyncEnumerable<string> StreamClaude(string systemPrompt, string userPrompt, int maxTokens)
+    {
+        var apiKey = config["AI:Claude:ApiKey"];
+        var model = config["AI:Claude:Model"] ?? "claude-haiku-4-5-20251001";
+
+        if (string.IsNullOrWhiteSpace(apiKey)) yield break;
+
+        var client = httpClientFactory.CreateClient("openai");
+        client.DefaultRequestHeaders.Clear();
+        client.DefaultRequestHeaders.Add("x-api-key", apiKey);
+        client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+        var payload = new
+        {
+            model,
+            max_tokens = maxTokens,
+            stream = true,
+            system = systemPrompt,
+            messages = new[] { new { role = "user", content = userPrompt } }
+        };
+
+        using var request = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Post, "https://api.anthropic.com/v1/messages")
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(payload)
+        };
+
+        using var response = await client.SendAsync(request, System.Net.Http.HttpCompletionOption.ResponseHeadersRead);
+        if (!response.IsSuccessStatusCode) yield break;
+
+        using var stream = await response.Content.ReadAsStreamAsync();
+        using var reader = new System.IO.StreamReader(stream);
+
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync();
+            if (string.IsNullOrWhiteSpace(line) || !line.StartsWith("data:")) continue;
+            var data = line["data:".Length..].Trim();
+            if (data == "[DONE]") break;
+
+            using var doc = System.Text.Json.JsonDocument.Parse(data);
+            var eventType = doc.RootElement.TryGetProperty("type", out var t) ? t.GetString() : null;
+            if (eventType != "content_block_delta") continue;
+
+            if (doc.RootElement.TryGetProperty("delta", out var delta) &&
+                delta.TryGetProperty("text", out var text))
+            {
+                var token = text.GetString();
+                if (!string.IsNullOrEmpty(token)) yield return token;
+            }
+        }
     }
 
     // ── Ollama (OpenAI-compatible) ────────────────────────────────────────────

@@ -263,34 +263,35 @@ export class ChatWidgetComponent implements AfterViewChecked {
     this.loading = true;
     this.scrolled = false;
 
-    this.chatService.ask({
+    // Add an empty assistant message that will be filled token-by-token
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '', timestamp: new Date() };
+    this.messages.push(assistantMsg);
+
+    const req = {
       userId: this.session.userId,
       grantId: this.selectedGrantId,
       question,
       conversationId: this.conversationId
-    }).subscribe({
-      next: res => {
+    };
+
+    (async () => {
+      try {
+        for await (const token of this.chatService.askStream(req)) {
+          // First token carries the session ID
+          if (token.startsWith('[SESSION:') && token.endsWith(']')) {
+            this.conversationId = token.slice('[SESSION:'.length, -1);
+            continue;
+          }
+          assistantMsg.content += token;
+          this.scrolled = false;
+        }
+      } catch {
+        assistantMsg.content = 'Could not reach the AI service. Please ensure the API is running.';
+      } finally {
         this.loading = false;
-        this.conversationId = res.conversationId;
-        this.messages.push({
-          role: 'assistant',
-          content: res.success ? (res.answer ?? '') : (res.errorMessage ?? 'Sorry, an error occurred.'),
-          sources: res.sources,
-          followUpQuestions: res.success ? (res.followUpQuestions ?? []) : [],
-          timestamp: new Date()
-        });
-        this.scrolled = false;
-      },
-      error: () => {
-        this.loading = false;
-        this.messages.push({
-          role: 'assistant',
-          content: 'Could not reach the AI service. Please ensure the API is running and OpenAI key is set.',
-          timestamp: new Date()
-        });
         this.scrolled = false;
       }
-    });
+    })();
   }
 
   ngAfterViewChecked() {
