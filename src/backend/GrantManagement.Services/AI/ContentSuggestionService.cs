@@ -284,6 +284,14 @@ public class ContentSuggestionService(
                 var content = ex.Content?.Length > 300 ? ex.Content[..300] + "…" : ex.Content;
                 sb.AppendLine($"\nApproved example (rating {ex.ReviewerRating}/5): {content}");
             }
+
+            // No prior content and no examples — inject section scaffold so LLM knows expected structure
+            if (string.IsNullOrWhiteSpace(previousContent) && examples.Count == 0)
+            {
+                var scaffold = SectionTemplates.Get(sectionName);
+                if (scaffold is not null)
+                    sb.AppendLine($"\nExpected structure for this section: {scaffold}");
+            }
         }
 
         var targetWords = wordCount is 100 or 150 or 200 or 250 ? wordCount.Value : 150;
@@ -317,4 +325,49 @@ file static class StringExtensions
 {
     public static string IfEmpty(this string? value, string fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value;
+}
+
+// Section templates used as scaffolding when no previous content or approved examples exist.
+// Tells the LLM what structure is expected so it doesn't generate generic filler.
+file static class SectionTemplates
+{
+    private static readonly Dictionary<string, string> Templates = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["PerformanceNarrative"] =
+            "Structure: (1) Total patients/encounters served this period with % change vs prior period. " +
+            "(2) Top 2–3 clinical outcomes achieved. (3) Any notable population health improvements.",
+
+        ["Accomplishments"] =
+            "Structure: (1) Lead with the single biggest achievement. (2) List 2–3 supporting accomplishments " +
+            "with specific metrics. (3) Connect outcomes to grant objectives.",
+
+        ["Challenges"] =
+            "Structure: (1) Describe the primary challenge faced. (2) Explain root cause or contributing factors. " +
+            "(3) Describe mitigation steps taken or planned.",
+
+        ["GoalsObjectives"] =
+            "Structure: (1) State each objective with its target metric. (2) Report actual vs. target. " +
+            "(3) Explain any variance and corrective action.",
+
+        ["BudgetNarrative"] =
+            "Structure: (1) Total expenditure vs. budget. (2) Highlight any significant variances by category. " +
+            "(3) Justify any unexpected spending or cost savings.",
+
+        ["StaffingNarrative"] =
+            "Structure: (1) Current FTE count vs. approved. (2) Any vacancies and recruitment status. " +
+            "(3) Key staff changes or training completed this period.",
+
+        ["PatientServices"] =
+            "Structure: (1) Total unduplicated patients served. (2) Breakdown by service type or population. " +
+            "(3) Telehealth vs. in-person utilisation if applicable.",
+    };
+
+    public static string? Get(string sectionName)
+    {
+        // Partial match — handles variations like "PerformanceNarrativeQ1"
+        var key = Templates.Keys.FirstOrDefault(k =>
+            sectionName.Contains(k, StringComparison.OrdinalIgnoreCase) ||
+            k.Contains(sectionName, StringComparison.OrdinalIgnoreCase));
+        return key is not null ? Templates[key] : null;
+    }
 }
