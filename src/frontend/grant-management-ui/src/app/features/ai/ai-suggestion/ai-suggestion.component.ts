@@ -59,7 +59,11 @@ import { AiService } from '../../../core/services/ai.service';
           <!-- Generated result — inside the same card -->
         <div *ngIf="suggestion" class="result-body">
           <div class="result-divider">
-            <span class="meta">{{ tokensUsed }} tokens · ~\${{ cost | number:'1.4-4' }}</span>
+            <span class="quality-stars" *ngIf="qualityScore" [title]="'Quality score: ' + qualityScore + '/5'">
+              <mat-icon *ngFor="let s of [1,2,3,4,5]" class="star-icon"
+                [class.filled]="s <= (qualityScore || 0)">star</mat-icon>
+            </span>
+            <span class="meta">{{ tokensUsed ? (tokensUsed + ' tokens · ~$' + (cost | number:'1.4-4')) : '' }}</span>
           </div>
           <textarea class="suggestion-text" [(ngModel)]="suggestion" rows="8"></textarea>
           <!-- Refinement instruction for regeneration -->
@@ -154,7 +158,10 @@ import { AiService } from '../../../core/services/ai.service';
       display: flex; align-items: center; justify-content: flex-end;
       border-top: 1px dashed #e1bee7; padding: 8px 0 6px;
     }
-    .meta { font-size: 0.74rem; color: #ab87c4; }
+    .meta { font-size: 0.74rem; color: #ab87c4; flex: 1; text-align: right; }
+    .quality-stars { display: flex; align-items: center; gap: 1px; }
+    .star-icon { font-size: 14px; width: 14px; height: 14px; color: #ddd; }
+    .star-icon.filled { color: #f59e0b; }
     .suggestion-text {
       width: 100%; box-sizing: border-box; border: 1px solid #e1bee7;
       border-radius: 6px; padding: 10px; font-size: 0.88rem;
@@ -193,6 +200,7 @@ export class AiSuggestionComponent {
   toneOptions = ['Professional', 'Concise', 'Detailed'];
   tokensUsed = 0;
   cost = 0;
+  qualityScore: number | null = null;
   lastLogId: string | null = null;
 
   getSuggestion() {
@@ -212,6 +220,14 @@ export class AiSuggestionComponent {
     (async () => {
       try {
         for await (const token of this.aiService.streamSuggestion(req)) {
+          if (token.startsWith('[META:') && token.endsWith(']')) {
+            try {
+              const meta = JSON.parse(token.slice('[META:'.length, -1));
+              this.lastLogId = meta.logId ?? null;
+              this.qualityScore = meta.qualityScore ?? null;
+            } catch { /* ignore malformed meta */ }
+            continue;
+          }
           this.suggestion = (this.suggestion ?? '') + token;
         }
       } catch {

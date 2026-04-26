@@ -79,14 +79,49 @@ public class ContentSuggestionService(
             return new SuggestionResponseDto { Success = false, ErrorMessage = result.Error };
         }
 
+        // 7. Score the suggestion quality in parallel with any other post-processing
+        var qualityScore = await ScoreSuggestionAsync(result.Content!, request.SectionName, request.KeyPoints);
+
         return new SuggestionResponseDto
         {
             Success = true,
             SuggestedText = result.Content,
             TokensUsed = result.PromptTokens + result.CompletionTokens,
             EstimatedCost = cost,
-            LogId = logId
+            LogId = logId,
+            QualityScore = qualityScore
         };
+    }
+
+    // Returns a quality score 1-5 for the suggestion based on relevance, specificity, and professional tone.
+    private async Task<int?> ScoreSuggestionAsync(string suggestion, string sectionName, string? keyPoints)
+    {
+        var context = string.IsNullOrWhiteSpace(keyPoints)
+            ? $"Section: {sectionName}"
+            : $"Section: {sectionName}\nKey points that should be covered: {keyPoints}";
+
+        var prompt = $"""
+            {context}
+
+            Generated narrative:
+            {suggestion}
+
+            Score this narrative 1–5 on these criteria:
+            - Relevance: Does it address the section topic and key points?
+            - Specificity: Does it include concrete details rather than vague statements?
+            - Professionalism: Is the tone appropriate for a federal grant report?
+
+            Reply with ONLY a single digit from 1 to 5. No explanation.
+            """;
+
+        var result = await openAI.CompleteAsync(
+            "You are a grant report quality evaluator. Reply with a single digit 1-5.",
+            prompt, maxTokens: 5);
+
+        if (result.Success && int.TryParse(result.Content?.Trim(), out var score) && score is >= 1 and <= 5)
+            return score;
+
+        return null;
     }
 
     public async IAsyncEnumerable<string> StreamSuggestionAsync(SuggestionRequestDto request)
@@ -108,8 +143,30 @@ public class ContentSuggestionService(
         var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples,
             request.KeyPoints, request.RegenerationFeedback, siblingContext, request.WordCount);
 
+        var fullText = new System.Text.StringBuilder();
         await foreach (var token in openAI.StreamAsync(systemPrompt, userPrompt, maxTokens: 400))
+        {
+            fullText.Append(token);
             yield return token;
+        }
+
+        // Emit metadata as a final token so the client can read logId and qualityScore
+        if (fullText.Length > 0)
+        {
+            var generatedText = fullText.ToString();
+            var logId = await aiRepo.LogUsageAsync(new AIUsageLog
+            {
+                UserId = request.UserId,
+                GrantId = report.Grant.GrantId,
+                ReportId = request.ReportId,
+                FeatureType = "ContentSuggestion",
+                SectionName = request.SectionName,
+                ModelName = "ollama/qwen2.5-coder",
+                Success = true
+            });
+            var qualityScore = await ScoreSuggestionAsync(generatedText, request.SectionName, request.KeyPoints);
+            yield return $"[META:{{\"logId\":\"{logId}\",\"qualityScore\":{(qualityScore.HasValue ? qualityScore.Value.ToString() : "null")}}}]";
+        }
     }
 
     public async Task RecordFeedbackAsync(FeedbackRequestDto feedback)

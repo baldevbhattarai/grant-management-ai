@@ -15,6 +15,7 @@ export interface SuggestionResponse {
   tokensUsed: number;
   estimatedCost: number;
   logId: string | null;
+  qualityScore: number | null;
 }
 
 export interface FeedbackRequest {

@@ -24,6 +24,8 @@ public class SuggestionResponseDto
     public decimal EstimatedCost { get; set; }
     /// <summary>Log ID returned so the frontend can send feedback referencing this generation.</summary>
     public Guid? LogId { get; set; }
+    /// <summary>AI self-assessed quality score 1–5 (relevance, specificity, tone). Null if scoring failed.</summary>
+    public int? QualityScore { get; set; }
 }
 
 public class FeedbackRequestDto
