@@ -28,19 +28,23 @@ public class ChatbotService(
         if (grant is null)
             return new ChatResponseDto { Success = false, ErrorMessage = "Grant not found" };
 
-        // 3. Semantic vector search — falls back to SQL LIKE if Qdrant unavailable
-        List<ChatSourceDto> sources;
-        string contextBlock;
-        (sources, contextBlock) = await BuildContextAsync(request.Question, request.GrantId);
-
-        // 4. Load conversation history for this session
+        // 3. Load conversation history first so query rewriting has context
         var history = await chatRepo.GetHistoryAsync(sessionId, MaxHistoryTurns);
 
-        // 5. Build prompt with report context + history + current question
+        // 4. Rewrite vague/contextual questions into standalone queries before embedding
+        var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
+        logger.LogDebug("Query rewrite: '{Original}' → '{Rewritten}'", request.Question, standaloneQuestion);
+
+        // 5. Semantic vector search using the rewritten question — falls back to SQL LIKE if Qdrant unavailable
+        List<ChatSourceDto> sources;
+        string contextBlock;
+        (sources, contextBlock) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+
+        // 6. Build prompt with report context + history + current question
         var systemPrompt = BuildSystemPrompt(grant);
         var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
 
-        // 6. Call LLM
+        // 7. Call LLM
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 300);
 
         sw.Stop();
@@ -78,6 +82,34 @@ public class ChatbotService(
             ConversationId = sessionId,
             Sources = sources
         };
+    }
+
+    // Rewrites vague/contextual questions into self-contained queries using conversation history.
+    // Falls back to the original question if the LLM call fails or history is empty.
+    private async Task<string> RewriteQuestionAsync(string question, List<Core.Entities.ChatConversation> history)
+    {
+        if (history.Count == 0) return question;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Conversation history:");
+        foreach (var msg in history)
+        {
+            var label = msg.Role == "user" ? "User" : "Assistant";
+            sb.AppendLine($"{label}: {msg.Content}");
+        }
+        sb.AppendLine();
+        sb.AppendLine($"Current question: {question}");
+        sb.AppendLine();
+        sb.AppendLine("Rewrite the current question as a complete, standalone question that can be understood without the conversation history. Return ONLY the rewritten question, nothing else.");
+
+        var result = await openAI.CompleteAsync(
+            "You are a query rewriting assistant. Rewrite questions to be self-contained.",
+            sb.ToString(),
+            maxTokens: 80);
+
+        return result.Success && !string.IsNullOrWhiteSpace(result.Content)
+            ? result.Content.Trim('"', ' ', '\n')
+            : question;
     }
 
     // Returns (sourceDtos, context text block) — tries vector search first, falls back to SQL LIKE
