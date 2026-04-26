@@ -65,7 +65,14 @@ import { SessionService } from '../../../core/services/session.service';
               <div class="sources-label">Sources:</div>
               <div *ngFor="let src of msg.sources" class="source-item">
                 <mat-icon inline>article</mat-icon>
-                <strong>{{ src.reportPeriod }}</strong> · {{ src.sectionName }}
+                <ng-container *ngIf="src.reportId; else plainSource">
+                  <a [href]="'/reports/' + src.reportId" target="_blank" class="source-link">
+                    <strong>{{ src.reportPeriod }}</strong> · {{ src.sectionName }}
+                  </a>
+                </ng-container>
+                <ng-template #plainSource>
+                  <strong>{{ src.reportPeriod }}</strong> · {{ src.sectionName }}
+                </ng-template>
                 <div class="snippet">{{ src.snippet }}</div>
               </div>
             </div>
@@ -151,6 +158,8 @@ import { SessionService } from '../../../core/services/session.service';
     .sources-label { font-size: 0.72rem; color: #888; margin-bottom: 4px; }
     .source-item { font-size: 0.75rem; color: #555; margin-bottom: 6px; display: flex; flex-direction: column; gap: 2px; }
     .snippet { color: #777; font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .source-link { color: #6a1b9a; text-decoration: none; font-size: 0.75rem; }
+    .source-link:hover { text-decoration: underline; }
     .chat-input {
       padding: 10px 12px; border-top: 1px solid #e0e0e0;
       display: flex; align-items: center; gap: 8px;

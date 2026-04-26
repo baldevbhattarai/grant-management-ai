@@ -140,7 +140,8 @@ public class ChatbotService(
                 {
                     ReportPeriod = $"{r.ReportingYear} {r.ReportingQuarter}",
                     SectionName = r.SectionName,
-                    Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText
+                    Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText,
+                    ReportId = r.ReportId
                 }).ToList();
 
                 return (dtos, sb.ToString(), maxScore);

@@ -34,4 +34,5 @@ public record VectorSearchResult(
     string ResponseText,
     string SectionName,
     int ReportingYear,
-    string ReportingQuarter);
+    string ReportingQuarter,
+    Guid? ReportId = null);

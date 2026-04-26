@@ -30,6 +30,7 @@ export interface ChatSource {
   reportPeriod: string;
   sectionName: string;
   snippet: string;
+  reportId: string | null;
 }
 
 export interface ChatResponse {

@@ -24,4 +24,6 @@ public class ChatSourceDto
     public string ReportPeriod { get; set; } = string.Empty;
     public string SectionName { get; set; } = string.Empty;
     public string Snippet { get; set; } = string.Empty;
+    /// <summary>Report ID for deep-linking to the source section in the UI.</summary>
+    public Guid? ReportId { get; set; }
 }

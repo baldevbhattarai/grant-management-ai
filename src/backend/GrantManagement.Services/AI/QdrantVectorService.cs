@@ -137,14 +137,22 @@ public class QdrantVectorService(
                 scoreThreshold: minScore,
                 payloadSelector: true);
 
-            return results.Select(r => new VectorSearchResult(
-                SectionId: Guid.Parse(r.Id.Uuid),
-                Score: r.Score,
-                ResponseText: r.Payload.TryGetValue("responseText", out var rt) ? rt.StringValue : string.Empty,
-                SectionName: r.Payload.TryGetValue("sectionName", out var sn) ? sn.StringValue : string.Empty,
-                ReportingYear: r.Payload.TryGetValue("reportingYear", out var ry) ? (int)ry.IntegerValue : 0,
-                ReportingQuarter: r.Payload.TryGetValue("reportingQuarter", out var rq) ? rq.StringValue : string.Empty
-            )).ToList();
+            return results.Select(r =>
+            {
+                Guid? reportId = null;
+                if (r.Payload.TryGetValue("reportId", out var rid) &&
+                    Guid.TryParse(rid.StringValue, out var parsedReportId))
+                    reportId = parsedReportId;
+
+                return new VectorSearchResult(
+                    SectionId: Guid.Parse(r.Id.Uuid),
+                    Score: r.Score,
+                    ResponseText: r.Payload.TryGetValue("responseText", out var rt) ? rt.StringValue : string.Empty,
+                    SectionName: r.Payload.TryGetValue("sectionName", out var sn) ? sn.StringValue : string.Empty,
+                    ReportingYear: r.Payload.TryGetValue("reportingYear", out var ry) ? (int)ry.IntegerValue : 0,
+                    ReportingQuarter: r.Payload.TryGetValue("reportingQuarter", out var rq) ? rq.StringValue : string.Empty,
+                    ReportId: reportId);
+            }).ToList();
         }
         catch (Exception ex)
         {
