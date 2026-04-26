@@ -40,11 +40,13 @@ export interface ChatResponse {
   errorMessage: string | null;
   sources: ChatSource[];
   confidenceScore: number | null;
+  followUpQuestions: string[];
 }
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   sources?: ChatSource[];
+  followUpQuestions?: string[];
   timestamp: Date;
 }

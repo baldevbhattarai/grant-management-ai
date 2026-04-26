@@ -60,6 +60,12 @@ import { SessionService } from '../../../core/services/session.service';
           <div class="bubble">
             <div class="content">{{ msg.content }}</div>
 
+            <!-- Follow-up question chips -->
+            <div *ngIf="msg.followUpQuestions && msg.followUpQuestions.length > 0" class="followups">
+              <div class="followups-label">You might also ask:</div>
+              <button *ngFor="let q of msg.followUpQuestions" class="followup-chip" (click)="askSample(q)">{{ q }}</button>
+            </div>
+
             <!-- Sources -->
             <div *ngIf="msg.sources && msg.sources.length > 0" class="sources">
               <div class="sources-label">Sources:</div>
@@ -160,6 +166,14 @@ import { SessionService } from '../../../core/services/session.service';
     .snippet { color: #777; font-style: italic; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
     .source-link { color: #6a1b9a; text-decoration: none; font-size: 0.75rem; }
     .source-link:hover { text-decoration: underline; }
+    .followups { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .followups-label { font-size: 0.72rem; color: #888; margin-bottom: 2px; }
+    .followup-chip {
+      background: #f3e5f5; border: 1px solid #ce93d8; border-radius: 12px;
+      padding: 4px 10px; font-size: 0.75rem; color: #6a1b9a;
+      cursor: pointer; text-align: left; white-space: normal; line-height: 1.3;
+    }
+    .followup-chip:hover { background: #e1bee7; }
     .chat-input {
       padding: 10px 12px; border-top: 1px solid #e0e0e0;
       display: flex; align-items: center; gap: 8px;
@@ -262,6 +276,7 @@ export class ChatWidgetComponent implements AfterViewChecked {
           role: 'assistant',
           content: res.success ? (res.answer ?? '') : (res.errorMessage ?? 'Sorry, an error occurred.'),
           sources: res.sources,
+          followUpQuestions: res.success ? (res.followUpQuestions ?? []) : [],
           timestamp: new Date()
         });
         this.scrolled = false;

@@ -72,9 +72,12 @@ public class ChatbotService(
             return new ChatResponseDto { Success = false, ErrorMessage = result.Error };
         }
 
-        // 8. Persist this turn to conversation history
+        // 8. Generate follow-up questions and persist turn in parallel
+        var followUpTask = GenerateFollowUpQuestionsAsync(request.Question, result.Content!, grant);
         var userId = request.UserId ?? Guid.Empty;
-        await chatRepo.SaveTurnAsync(sessionId, userId, request.GrantId, request.Question, result.Content!);
+        var saveTask = chatRepo.SaveTurnAsync(sessionId, userId, request.GrantId, request.Question, result.Content!);
+
+        await Task.WhenAll(followUpTask, saveTask);
 
         return new ChatResponseDto
         {
@@ -82,8 +85,41 @@ public class ChatbotService(
             Answer = result.Content,
             ConversationId = sessionId,
             Sources = sources,
-            ConfidenceScore = confidenceScore
+            ConfidenceScore = confidenceScore,
+            FollowUpQuestions = followUpTask.Result
         };
+    }
+
+    // Generates 2-3 follow-up questions the user might want to ask next, based on the Q&A exchange.
+    private async Task<List<string>> GenerateFollowUpQuestionsAsync(
+        string question, string answer, Core.Entities.Grant grant)
+    {
+        var prompt = $"""
+            Grant: {grant.GrantNumber} ({grant.GrantType})
+            User asked: {question}
+            Assistant answered: {answer}
+
+            Generate exactly 3 short follow-up questions the user might want to ask next about this grant.
+            Return ONLY a numbered list like:
+            1. Question one?
+            2. Question two?
+            3. Question three?
+            """;
+
+        var result = await openAI.CompleteAsync(
+            "You are a helpful assistant generating follow-up questions. Be concise.",
+            prompt,
+            maxTokens: 120);
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Content))
+            return [];
+
+        return result.Content
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => System.Text.RegularExpressions.Regex.Replace(l.Trim(), @"^\d+\.\s*", ""))
+            .Where(l => l.Length > 5 && l.Contains('?'))
+            .Take(3)
+            .ToList();
     }
 
     // Rewrites vague/contextual questions into self-contained queries using conversation history.

@@ -17,6 +17,8 @@ public class ChatResponseDto
     public List<ChatSourceDto> Sources { get; set; } = [];
     /// <summary>Highest cosine similarity score from vector search (0–1). Null when only keyword search was used.</summary>
     public float? ConfidenceScore { get; set; }
+    /// <summary>2–3 suggested follow-up questions generated after the answer.</summary>
+    public List<string> FollowUpQuestions { get; set; } = [];
 }
 
 public class ChatSourceDto
