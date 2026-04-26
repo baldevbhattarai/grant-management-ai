@@ -44,9 +44,9 @@ public class ContentSuggestionService(
                 Snippet: s.ResponseText!.Length > 200 ? s.ResponseText![..200] + "…" : s.ResponseText!))
             .ToList();
 
-        var systemPrompt = BuildSystemPrompt();
+        var systemPrompt = BuildSystemPrompt(request.Tone);
         var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples,
-            request.KeyPoints, request.RegenerationFeedback, siblingContext);
+            request.KeyPoints, request.RegenerationFeedback, siblingContext, request.WordCount);
 
         // 5. Call OpenAI
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 400);
@@ -132,14 +132,23 @@ public class ContentSuggestionService(
         }
     }
 
-    private static string BuildSystemPrompt() =>
-        "You are a grant writer for HRSA Health Center progress reports. Write in first person. Be concise and professional. Max 250 words.";
+    private static string BuildSystemPrompt(string? tone = null)
+    {
+        var toneInstruction = (tone ?? "Professional").ToLower() switch
+        {
+            "concise"  => "Be very concise — use short, direct sentences. Avoid filler phrases.",
+            "detailed" => "Be thorough and detailed. Provide context, explain outcomes, and include supporting evidence.",
+            _          => "Be professional and clear. Use formal but accessible language."
+        };
+        return $"You are a grant writer for HRSA Health Center progress reports. Write in first person. {toneInstruction} Max 250 words.";
+    }
 
     private static string BuildUserPrompt(
         Grant grant, Report report, string sectionName,
         string? previousContent, List<AIApprovedContent> examples,
         string? keyPoints, string? regenerationFeedback = null,
-        List<(string SectionName, string SectionTitle, string Snippet)>? siblingContext = null)
+        List<(string SectionName, string SectionTitle, string Snippet)>? siblingContext = null,
+        int? wordCount = null)
     {
         var sb = new System.Text.StringBuilder();
         var hasKeyPoints = !string.IsNullOrWhiteSpace(keyPoints);
@@ -197,9 +206,11 @@ public class ContentSuggestionService(
             }
         }
 
+        var targetWords = wordCount is 100 or 150 or 200 or 250 ? wordCount.Value : 150;
+        var wordRange = $"{targetWords - 20}-{targetWords + 20}";
         var instruction = hasKeyPoints
-            ? "Write a 150-200 word narrative. Lead with the key highlights, then expand with relevant context from the previous report to fill out the full picture."
-            : "Write a 150-200 word narrative. Be specific and outcome-focused.";
+            ? $"Write a {wordRange} word narrative. Lead with the key highlights, then expand with relevant context from the previous report to fill out the full picture."
+            : $"Write a {wordRange} word narrative. Be specific and outcome-focused.";
 
         // Other sections already written in this report — use for coherence, avoid contradictions
         if (siblingContext is { Count: > 0 })

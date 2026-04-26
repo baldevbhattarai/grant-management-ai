@@ -4,6 +4,8 @@ export interface SuggestionRequest {
   userId: string | null;
   keyPoints?: string | null;
   regenerationFeedback?: string | null;
+  wordCount?: number | null;
+  tone?: string | null;
 }
 
 export interface SuggestionResponse {

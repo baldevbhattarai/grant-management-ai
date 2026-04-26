@@ -30,6 +30,24 @@ import { AiService } from '../../../core/services/ai.service';
           </button>
         </div>
 
+        <!-- Tone + word count controls -->
+        <div class="controls-row">
+          <div class="control-group">
+            <span class="control-label">Words:</span>
+            <button *ngFor="let w of wordCountOptions" class="ctrl-btn"
+              [class.active]="selectedWordCount === w" (click)="selectedWordCount = w" type="button">
+              {{w}}
+            </button>
+          </div>
+          <div class="control-group">
+            <span class="control-label">Tone:</span>
+            <button *ngFor="let t of toneOptions" class="ctrl-btn"
+              [class.active]="selectedTone === t" (click)="selectedTone = t" type="button">
+              {{t}}
+            </button>
+          </div>
+        </div>
+
         <!-- Collapsible key points -->
         <div class="key-points-body" *ngIf="showKeyPoints">
           <textarea class="key-points-input" [(ngModel)]="keyPoints" rows="3"
@@ -95,6 +113,19 @@ import { AiService } from '../../../core/services/ai.service';
     }
     .toggle-highlights:hover { background: #e1bee7; }
     .toggle-highlights mat-icon { font-size: 16px; height: 16px; width: 16px; }
+    .controls-row {
+      display: flex; gap: 16px; padding: 6px 14px; background: #faf5ff;
+      border-bottom: 1px solid #ede7f6; flex-wrap: wrap;
+    }
+    .control-group { display: flex; align-items: center; gap: 4px; }
+    .control-label { font-size: 0.72rem; color: #888; margin-right: 2px; }
+    .ctrl-btn {
+      border: 1px solid #d7b8e8; border-radius: 4px; background: white;
+      padding: 2px 7px; font-size: 0.75rem; cursor: pointer; color: #666;
+      transition: all 0.15s;
+    }
+    .ctrl-btn:hover { background: #f3e5f5; }
+    .ctrl-btn.active { background: #9c27b0; color: white; border-color: #9c27b0; font-weight: 600; }
 
     /* Key points collapsible body */
     .key-points-body { padding: 10px 14px 0; }
@@ -156,6 +187,10 @@ export class AiSuggestionComponent {
   keyPoints = '';
   showKeyPoints = false;
   regenerationFeedback = '';
+  selectedWordCount = 150;
+  selectedTone = 'Professional';
+  wordCountOptions = [100, 150, 200, 250];
+  toneOptions = ['Professional', 'Concise', 'Detailed'];
   tokensUsed = 0;
   cost = 0;
   lastLogId: string | null = null;
@@ -168,7 +203,9 @@ export class AiSuggestionComponent {
       sectionName: this.sectionName,
       userId: this.userId || null,
       keyPoints: this.keyPoints.trim() || null,
-      regenerationFeedback: this.regenerationFeedback.trim() || null
+      regenerationFeedback: this.regenerationFeedback.trim() || null,
+      wordCount: this.selectedWordCount,
+      tone: this.selectedTone
     }).subscribe({
       next: res => {
         this.loading = false;

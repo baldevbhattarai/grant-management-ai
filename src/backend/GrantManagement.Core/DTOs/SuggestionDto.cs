@@ -9,6 +9,10 @@ public class SuggestionRequestDto
     public string? KeyPoints { get; set; }
     /// <summary>Refinement instruction for regeneration, e.g. "make it shorter" or "focus more on outcomes".</summary>
     public string? RegenerationFeedback { get; set; }
+    /// <summary>Target word count: 100, 150, 200, or 250. Defaults to 150.</summary>
+    public int? WordCount { get; set; }
+    /// <summary>Writing tone: Professional, Concise, or Detailed. Defaults to Professional.</summary>
+    public string? Tone { get; set; }
 }
 
 public class SuggestionResponseDto
