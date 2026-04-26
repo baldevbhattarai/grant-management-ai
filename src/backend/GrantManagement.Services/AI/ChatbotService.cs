@@ -15,6 +15,7 @@ public class ChatbotService(
     ILogger<ChatbotService> logger) : IChatbotService
 {
     private const int MaxHistoryTurns = 5;
+    private const int SummarizationThreshold = 8; // summarize after 8 turns to keep context tight
 
     public async Task<ChatResponseDto> AskAsync(ChatRequestDto request)
     {
@@ -79,6 +80,9 @@ public class ChatbotService(
 
         await Task.WhenAll(followUpTask, saveTask);
 
+        // 9. Summarize old turns in the background if session is getting long
+        _ = TrySummarizeSessionAsync(sessionId, userId, request.GrantId, grant);
+
         return new ChatResponseDto
         {
             Success = true,
@@ -88,6 +92,42 @@ public class ChatbotService(
             ConfidenceScore = confidenceScore,
             FollowUpQuestions = followUpTask.Result
         };
+    }
+
+    // Checks if the session has exceeded SummarizationThreshold turns and collapses old turns into a summary.
+    private async Task TrySummarizeSessionAsync(Guid sessionId, Guid userId, Guid grantId, Core.Entities.Grant grant)
+    {
+        try
+        {
+            var turnCount = await chatRepo.GetTurnCountAsync(sessionId);
+            if (turnCount < SummarizationThreshold) return;
+
+            var allHistory = await chatRepo.GetHistoryAsync(sessionId, maxTurns: SummarizationThreshold);
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Conversation history:");
+            foreach (var msg in allHistory.Where(m => m.Role != "summary"))
+            {
+                var label = msg.Role == "user" ? "User" : "Assistant";
+                sb.AppendLine($"{label}: {msg.Content}");
+            }
+            sb.AppendLine();
+            sb.AppendLine($"Summarize the above conversation about HRSA grant {grant.GrantNumber} in 3-5 sentences, preserving key facts and decisions. Be concise.");
+
+            var result = await openAI.CompleteAsync(
+                "You are a conversation summarizer. Create a concise factual summary.",
+                sb.ToString(),
+                maxTokens: 200);
+
+            if (result.Success && !string.IsNullOrWhiteSpace(result.Content))
+            {
+                await chatRepo.ReplaceTurnsWithSummaryAsync(sessionId, userId, grantId, result.Content.Trim());
+                logger.LogInformation("Session {SessionId} summarized after {TurnCount} turns", sessionId, turnCount);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to summarize session {SessionId} — continuing without summarization", sessionId);
+        }
     }
 
     // Generates 2-3 follow-up questions the user might want to ask next, based on the Q&A exchange.
@@ -248,14 +288,23 @@ public class ChatbotService(
             sb.AppendLine();
         }
 
-        // Conversation history (prior turns in this session)
+        // Conversation history (prior turns in this session, may include a summary row)
         if (history.Count > 0)
         {
-            sb.AppendLine("Conversation so far:");
             foreach (var msg in history)
             {
-                var label = msg.Role == "user" ? "User" : "Assistant";
-                sb.AppendLine($"{label}: {msg.Content}");
+                if (msg.Role == "summary")
+                {
+                    sb.AppendLine("Earlier conversation summary:");
+                    sb.AppendLine(msg.Content);
+                }
+                else
+                {
+                    if (!sb.ToString().Contains("Conversation so far:"))
+                        sb.AppendLine("Conversation so far:");
+                    var label = msg.Role == "user" ? "User" : "Assistant";
+                    sb.AppendLine($"{label}: {msg.Content}");
+                }
             }
             sb.AppendLine();
         }
