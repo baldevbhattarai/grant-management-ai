@@ -35,7 +35,7 @@ public class ContentSuggestionService(
 
         // 4. Build prompt
         var systemPrompt = BuildSystemPrompt();
-        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples, request.KeyPoints);
+        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples, request.KeyPoints, request.RegenerationFeedback);
 
         // 5. Call OpenAI
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 400);
@@ -127,7 +127,7 @@ public class ContentSuggestionService(
     private static string BuildUserPrompt(
         Grant grant, Report report, string sectionName,
         string? previousContent, List<AIApprovedContent> examples,
-        string? keyPoints)
+        string? keyPoints, string? regenerationFeedback = null)
     {
         var sb = new System.Text.StringBuilder();
         var hasKeyPoints = !string.IsNullOrWhiteSpace(keyPoints);
@@ -188,6 +188,10 @@ public class ContentSuggestionService(
         var instruction = hasKeyPoints
             ? "Write a 150-200 word narrative. Lead with the key highlights, then expand with relevant context from the previous report to fill out the full picture."
             : "Write a 150-200 word narrative. Be specific and outcome-focused.";
+
+        // Refinement instruction overrides the default instruction when regenerating
+        if (!string.IsNullOrWhiteSpace(regenerationFeedback))
+            sb.AppendLine($"\nRefinement request: {regenerationFeedback.Trim()}");
 
         sb.AppendLine($"\n{instruction}\n\nNarrative:");
 

@@ -3,6 +3,7 @@ export interface SuggestionRequest {
   sectionName: string;
   userId: string | null;
   keyPoints?: string | null;
+  regenerationFeedback?: string | null;
 }
 
 export interface SuggestionResponse {

@@ -44,6 +44,12 @@ import { AiService } from '../../../core/services/ai.service';
             <span class="meta">{{ tokensUsed }} tokens · ~\${{ cost | number:'1.4-4' }}</span>
           </div>
           <textarea class="suggestion-text" [(ngModel)]="suggestion" rows="8"></textarea>
+          <!-- Refinement instruction for regeneration -->
+          <div class="refinement-row">
+            <input class="refinement-input" [(ngModel)]="regenerationFeedback"
+              placeholder="Refinement hint, e.g. 'make it shorter' or 'focus on telehealth outcomes'…"
+              maxlength="200" />
+          </div>
           <div class="result-actions">
             <button mat-stroked-button color="primary" class="action-btn" (click)="accept()">
               <mat-icon>check</mat-icon> Accept
@@ -124,6 +130,12 @@ import { AiService } from '../../../core/services/ai.service';
       font-family: inherit; resize: vertical; background: #fff;
     }
     .suggestion-text:focus { outline: none; border-color: #9c27b0; }
+    .refinement-row { margin-top: 8px; }
+    .refinement-input {
+      width: 100%; box-sizing: border-box; border: 1px solid #e1bee7; border-radius: 6px;
+      padding: 6px 10px; font-size: 0.82rem; font-family: inherit; color: #555;
+    }
+    .refinement-input:focus { outline: none; border-color: #9c27b0; }
     .result-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
     .action-btn { font-size: 0.78rem; height: 28px; line-height: 28px; padding: 0 10px; }
     .action-btn mat-icon { font-size: 14px; height: 14px; width: 14px; margin-right: 3px; }
@@ -143,6 +155,7 @@ export class AiSuggestionComponent {
   suggestion: string | null = null;
   keyPoints = '';
   showKeyPoints = false;
+  regenerationFeedback = '';
   tokensUsed = 0;
   cost = 0;
   lastLogId: string | null = null;
@@ -154,7 +167,8 @@ export class AiSuggestionComponent {
       reportId: this.reportId,
       sectionName: this.sectionName,
       userId: this.userId || null,
-      keyPoints: this.keyPoints.trim() || null
+      keyPoints: this.keyPoints.trim() || null,
+      regenerationFeedback: this.regenerationFeedback.trim() || null
     }).subscribe({
       next: res => {
         this.loading = false;

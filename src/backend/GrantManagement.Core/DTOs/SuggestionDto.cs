@@ -7,6 +7,8 @@ public class SuggestionRequestDto
     public Guid? UserId { get; set; }
     /// <summary>Optional key highlights for the current reporting period provided by the user.</summary>
     public string? KeyPoints { get; set; }
+    /// <summary>Refinement instruction for regeneration, e.g. "make it shorter" or "focus more on outcomes".</summary>
+    public string? RegenerationFeedback { get; set; }
 }
 
 public class SuggestionResponseDto
