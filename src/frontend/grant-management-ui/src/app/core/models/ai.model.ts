@@ -38,6 +38,7 @@ export interface ChatResponse {
   conversationId: string;
   errorMessage: string | null;
   sources: ChatSource[];
+  confidenceScore: number | null;
 }
 
 export interface ChatMessage {

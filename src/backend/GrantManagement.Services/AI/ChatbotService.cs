@@ -38,10 +38,11 @@ public class ChatbotService(
         // 5. Semantic vector search using the rewritten question — falls back to SQL LIKE if Qdrant unavailable
         List<ChatSourceDto> sources;
         string contextBlock;
-        (sources, contextBlock) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+        float? confidenceScore;
+        (sources, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
 
         // 6. Build prompt with report context + history + current question
-        var systemPrompt = BuildSystemPrompt(grant);
+        var systemPrompt = BuildSystemPrompt(grant, confidenceScore);
         var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
 
         // 7. Call LLM
@@ -80,7 +81,8 @@ public class ChatbotService(
             Success = true,
             Answer = result.Content,
             ConversationId = sessionId,
-            Sources = sources
+            Sources = sources,
+            ConfidenceScore = confidenceScore
         };
     }
 
@@ -112,8 +114,8 @@ public class ChatbotService(
             : question;
     }
 
-    // Returns (sourceDtos, context text block) — tries vector search first, falls back to SQL LIKE
-    private async Task<(List<ChatSourceDto>, string)> BuildContextAsync(string question, Guid grantId)
+    // Returns (sourceDtos, context text block, maxConfidenceScore) — tries vector search first, falls back to SQL LIKE
+    private async Task<(List<ChatSourceDto>, string, float?)> BuildContextAsync(string question, Guid grantId)
     {
         try
         {
@@ -123,6 +125,8 @@ public class ChatbotService(
             if (vectorResults.Count > 0)
             {
                 logger.LogDebug("Vector search returned {Count} results for grant {GrantId}", vectorResults.Count, grantId);
+
+                var maxScore = vectorResults.Max(r => r.Score);
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("Report context (semantic search):");
@@ -139,7 +143,7 @@ public class ChatbotService(
                     Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText
                 }).ToList();
 
-                return (dtos, sb.ToString());
+                return (dtos, sb.ToString(), maxScore);
             }
         }
         catch (Exception ex)
@@ -147,11 +151,12 @@ public class ChatbotService(
             logger.LogWarning(ex, "Vector search unavailable — falling back to keyword search");
         }
 
-        // SQL LIKE keyword fallback
-        return await KeywordFallbackAsync(question, grantId);
+        // SQL LIKE keyword fallback — no confidence score available
+        var (fallbackDtos, fallbackContext) = await KeywordFallbackAsync(question, grantId);
+        return (fallbackDtos, fallbackContext, null);
     }
 
-    private async Task<(List<ChatSourceDto>, string)> KeywordFallbackAsync(string question, Guid grantId)
+    private async Task<(List<ChatSourceDto>, string)> KeywordFallbackAsync(string question, Guid grantId)  // returns without confidence score
     {
         var keywords = ExtractKeywords(question);
         var sections = new List<ReportSection>();
@@ -184,8 +189,16 @@ public class ChatbotService(
         return (dtos, sb.ToString());
     }
 
-    private static string BuildSystemPrompt(Core.Entities.Grant grant) =>
-        $"You are an assistant for HRSA grant {grant.GrantNumber} ({grant.GrantType}). Answer based only on the provided report content and conversation history. Be brief and factual.";
+    private static string BuildSystemPrompt(Core.Entities.Grant grant, float? confidenceScore = null)
+    {
+        var base_ = $"You are an assistant for HRSA grant {grant.GrantNumber} ({grant.GrantType}). Answer based only on the provided report content and conversation history. Be brief and factual.";
+
+        // Low confidence: instruct the LLM to admit uncertainty rather than hallucinate
+        if (confidenceScore is null || confidenceScore < 0.55f)
+            base_ += " If the provided context does not contain enough information to answer confidently, say \"I don't have enough information in the grant reports to answer that.\" Do not guess or invent details.";
+
+        return base_;
+    }
 
     private static string BuildUserPrompt(string question, string contextBlock, List<Core.Entities.ChatConversation> history)
     {

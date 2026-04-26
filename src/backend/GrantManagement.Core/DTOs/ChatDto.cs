@@ -15,6 +15,8 @@ public class ChatResponseDto
     public Guid ConversationId { get; set; }
     public string? ErrorMessage { get; set; }
     public List<ChatSourceDto> Sources { get; set; } = [];
+    /// <summary>Highest cosine similarity score from vector search (0–1). Null when only keyword search was used.</summary>
+    public float? ConfidenceScore { get; set; }
 }
 
 public class ChatSourceDto
