@@ -197,8 +197,9 @@ export class AiSuggestionComponent {
 
   getSuggestion() {
     this.loading = true;
-    this.suggestion = null;
-    this.aiService.getSuggestion({
+    this.suggestion = '';
+
+    const req = {
       reportId: this.reportId,
       sectionName: this.sectionName,
       userId: this.userId || null,
@@ -206,23 +207,20 @@ export class AiSuggestionComponent {
       regenerationFeedback: this.regenerationFeedback.trim() || null,
       wordCount: this.selectedWordCount,
       tone: this.selectedTone
-    }).subscribe({
-      next: res => {
-        this.loading = false;
-        if (res.success) {
-          this.suggestion = res.suggestedText;
-          this.tokensUsed = res.tokensUsed;
-          this.cost = res.estimatedCost;
-          this.lastLogId = res.logId;
-        } else {
-          this.snackBar.open(res.errorMessage || 'AI service unavailable', 'Close', { duration: 5000 });
+    };
+
+    (async () => {
+      try {
+        for await (const token of this.aiService.streamSuggestion(req)) {
+          this.suggestion = (this.suggestion ?? '') + token;
         }
-      },
-      error: () => {
+      } catch {
+        this.snackBar.open('Error contacting AI service.', 'Close', { duration: 6000 });
+        this.suggestion = null;
+      } finally {
         this.loading = false;
-        this.snackBar.open('Error contacting AI service. Is the OpenAI key configured?', 'Close', { duration: 6000 });
       }
-    });
+    })();
   }
 
   accept() {

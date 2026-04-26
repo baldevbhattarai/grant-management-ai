@@ -89,6 +89,29 @@ public class ContentSuggestionService(
         };
     }
 
+    public async IAsyncEnumerable<string> StreamSuggestionAsync(SuggestionRequestDto request)
+    {
+        var report = await reportRepo.GetByIdWithSectionsAsync(request.ReportId);
+        if (report is null) { yield return "[ERROR: Report not found]"; yield break; }
+
+        var grant = report.Grant;
+        var previousContent = await aiRepo.GetPreviousReportContentAsync(grant.GrantId, request.SectionName);
+        var examples = await aiRepo.FindExamplesAsync(grant.ProgramTypeCode, request.SectionName, grant.GrantId);
+        var siblingContext = report.Sections
+            .Where(s => s.SectionName != request.SectionName && !string.IsNullOrWhiteSpace(s.ResponseText))
+            .OrderBy(s => s.SectionOrder).Take(3)
+            .Select(s => (s.SectionName, s.SectionTitle,
+                Snippet: s.ResponseText!.Length > 200 ? s.ResponseText![..200] + "…" : s.ResponseText!))
+            .ToList();
+
+        var systemPrompt = BuildSystemPrompt(request.Tone);
+        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples,
+            request.KeyPoints, request.RegenerationFeedback, siblingContext, request.WordCount);
+
+        await foreach (var token in openAI.StreamAsync(systemPrompt, userPrompt, maxTokens: 400))
+            yield return token;
+    }
+
     public async Task RecordFeedbackAsync(FeedbackRequestDto feedback)
     {
         await aiRepo.UpdateFeedbackAsync(feedback.LogId, feedback.UserAction, feedback.UserRating);

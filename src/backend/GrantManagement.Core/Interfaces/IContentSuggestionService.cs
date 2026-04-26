@@ -6,4 +6,5 @@ public interface IContentSuggestionService
 {
     Task<SuggestionResponseDto> GenerateSuggestionAsync(SuggestionRequestDto request);
     Task RecordFeedbackAsync(FeedbackRequestDto feedback);
+    IAsyncEnumerable<string> StreamSuggestionAsync(SuggestionRequestDto request);
 }
