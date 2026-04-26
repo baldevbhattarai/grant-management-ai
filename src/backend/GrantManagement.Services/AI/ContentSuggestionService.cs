@@ -34,8 +34,19 @@ public class ContentSuggestionService(
         var examples = await aiRepo.FindExamplesAsync(grant.ProgramTypeCode, request.SectionName, grant.GrantId);
 
         // 4. Build prompt
+        // 4b. Collect already-filled sibling sections for cross-section coherence
+        var siblingContext = report.Sections
+            .Where(s => s.SectionName != request.SectionName &&
+                        !string.IsNullOrWhiteSpace(s.ResponseText))
+            .OrderBy(s => s.SectionOrder)
+            .Take(3)
+            .Select(s => (s.SectionName, s.SectionTitle,
+                Snippet: s.ResponseText!.Length > 200 ? s.ResponseText![..200] + "…" : s.ResponseText!))
+            .ToList();
+
         var systemPrompt = BuildSystemPrompt();
-        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples, request.KeyPoints, request.RegenerationFeedback);
+        var userPrompt = BuildUserPrompt(grant, report, request.SectionName, previousContent, examples,
+            request.KeyPoints, request.RegenerationFeedback, siblingContext);
 
         // 5. Call OpenAI
         var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 400);
@@ -127,7 +138,8 @@ public class ContentSuggestionService(
     private static string BuildUserPrompt(
         Grant grant, Report report, string sectionName,
         string? previousContent, List<AIApprovedContent> examples,
-        string? keyPoints, string? regenerationFeedback = null)
+        string? keyPoints, string? regenerationFeedback = null,
+        List<(string SectionName, string SectionTitle, string Snippet)>? siblingContext = null)
     {
         var sb = new System.Text.StringBuilder();
         var hasKeyPoints = !string.IsNullOrWhiteSpace(keyPoints);
@@ -189,7 +201,15 @@ public class ContentSuggestionService(
             ? "Write a 150-200 word narrative. Lead with the key highlights, then expand with relevant context from the previous report to fill out the full picture."
             : "Write a 150-200 word narrative. Be specific and outcome-focused.";
 
-        // Refinement instruction overrides the default instruction when regenerating
+        // Other sections already written in this report — use for coherence, avoid contradictions
+        if (siblingContext is { Count: > 0 })
+        {
+            sb.AppendLine("\nOther sections already written in this report (for consistency — do not contradict):");
+            foreach (var (name, title, snippet) in siblingContext)
+                sb.AppendLine($"  [{title.IfEmpty(name)}]: {snippet}");
+        }
+
+        // Refinement instruction for regeneration
         if (!string.IsNullOrWhiteSpace(regenerationFeedback))
             sb.AppendLine($"\nRefinement request: {regenerationFeedback.Trim()}");
 
@@ -200,4 +220,10 @@ public class ContentSuggestionService(
 
     private static decimal CalculateCost(int promptTokens, int completionTokens) =>
         (promptTokens / 1000m * PromptCostPer1K) + (completionTokens / 1000m * CompletionCostPer1K);
+}
+
+file static class StringExtensions
+{
+    public static string IfEmpty(this string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value;
 }
