@@ -69,4 +69,29 @@ public class AIRepository(ApplicationDbContext db) : IAIRepository
             .Take(topN)
             .ToListAsync();
     }
+
+    public async Task<List<ReportSection>> GetStructuredDataAsync(Guid grantId, string sectionNameContains, int topN = 5)
+    {
+        var lower = sectionNameContains.ToLower();
+        return await db.ReportSections
+            .Include(s => s.Report)
+            .Where(s =>
+                s.Report.GrantId == grantId &&
+                s.SectionName.ToLower().Contains(lower) &&
+                (s.ResponseNumber != null || s.ResponseSingle != null || s.ResponseText != null))
+            .OrderByDescending(s => s.Report.ReportingYear)
+            .ThenByDescending(s => s.Report.ReportingQuarter)
+            .Take(topN)
+            .ToListAsync();
+    }
+
+    public async Task<List<Report>> GetRecentReportsAsync(Guid grantId, int topN = 4)
+    {
+        return await db.Reports
+            .Where(r => r.GrantId == grantId)
+            .OrderByDescending(r => r.ReportingYear)
+            .ThenByDescending(r => r.ReportingQuarter)
+            .Take(topN)
+            .ToListAsync();
+    }
 }

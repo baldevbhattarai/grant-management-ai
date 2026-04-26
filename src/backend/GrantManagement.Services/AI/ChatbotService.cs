@@ -36,11 +36,22 @@ public class ChatbotService(
         var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
         logger.LogDebug("Query rewrite: '{Original}' → '{Rewritten}'", request.Question, standaloneQuestion);
 
-        // 5. Semantic vector search using the rewritten question — falls back to SQL LIKE if Qdrant unavailable
+        // 5. Detect structured data intent — if the user asks for numbers/metrics, query DB directly
         List<ChatSourceDto> sources;
         string contextBlock;
         float? confidenceScore;
-        (sources, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+
+        var structuredResult = await TryStructuredQueryAsync(standaloneQuestion, request.GrantId);
+        if (structuredResult is not null)
+        {
+            (sources, contextBlock) = structuredResult.Value;
+            confidenceScore = 1.0f; // DB data is exact — full confidence
+            logger.LogDebug("Structured data intent detected for question: {Question}", standaloneQuestion);
+        }
+        else
+        {
+            (sources, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+        }
 
         // 6. Build prompt with report context + history + current question
         var systemPrompt = BuildSystemPrompt(grant, confidenceScore);
@@ -103,7 +114,19 @@ public class ChatbotService(
 
         var history = await chatRepo.GetHistoryAsync(sessionId, MaxHistoryTurns);
         var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
-        var (_, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+
+        string contextBlock;
+        float? confidenceScore;
+        var structuredResult = await TryStructuredQueryAsync(standaloneQuestion, request.GrantId);
+        if (structuredResult is not null)
+        {
+            (_, contextBlock) = structuredResult.Value;
+            confidenceScore = 1.0f;
+        }
+        else
+        {
+            (_, contextBlock, confidenceScore) = await BuildContextAsync(standaloneQuestion, request.GrantId);
+        }
 
         var systemPrompt = BuildSystemPrompt(grant, confidenceScore);
         var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
@@ -351,6 +374,61 @@ public class ChatbotService(
         return sb.ToString();
     }
 
+    // Maps metric keywords to the section name fragment to search in the DB
+    private static readonly Dictionary<string[], string> StructuredIntentMap = new(new StringArrayComparer())
+    {
+        { ["patient", "patients", "beneficiar", "served", "encounter"] , "patient" },
+        { ["visit", "visits", "appointment"] , "visit" },
+        { ["staff", "fte", "workforce", "employee"] , "staff" },
+        { ["cost", "expenditure", "spend", "budget", "expense"] , "cost" },
+        { ["revenue", "income", "billing", "charge"] , "revenue" },
+    };
+
+    private static string? DetectStructuredIntent(string question)
+    {
+        var lower = question.ToLower();
+        // Only trigger for questions that ask for quantities/counts
+        var isQuantityQuestion = new[] { "how many", "how much", "count", "total", "number of", "quantity", "amount" }
+            .Any(lower.Contains);
+        if (!isQuantityQuestion) return null;
+
+        foreach (var (keywords, sectionHint) in StructuredIntentMap)
+            if (keywords.Any(lower.Contains))
+                return sectionHint;
+
+        return null;
+    }
+
+    // Returns structured DB context if the question matches a data intent, otherwise null.
+    private async Task<(List<ChatSourceDto>, string)?> TryStructuredQueryAsync(string question, Guid grantId)
+    {
+        var sectionHint = DetectStructuredIntent(question);
+        if (sectionHint is null) return null;
+
+        var sections = await aiRepo.GetStructuredDataAsync(grantId, sectionHint, topN: 4);
+        if (sections.Count == 0) return null;
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Structured report data (exact values from database):");
+        foreach (var s in sections)
+        {
+            var value = s.ResponseNumber.HasValue
+                ? s.ResponseNumber.Value.ToString("N0")
+                : (s.ResponseSingle ?? s.ResponseText ?? "N/A");
+            sb.AppendLine($"[{s.Report.ReportingYear} {s.Report.ReportingQuarter} - {s.SectionName}]: {value}");
+        }
+
+        var dtos = sections.Select(s => new ChatSourceDto
+        {
+            ReportPeriod = $"{s.Report.ReportingYear} {s.Report.ReportingQuarter}",
+            SectionName = s.SectionName,
+            Snippet = s.ResponseNumber.HasValue ? s.ResponseNumber.Value.ToString("N0") : (s.ResponseText?.Length > 100 ? s.ResponseText[..100] + "..." : s.ResponseText ?? string.Empty),
+            ReportId = s.ReportId
+        }).ToList();
+
+        return (dtos, sb.ToString());
+    }
+
     private static List<string> ExtractKeywords(string question)
     {
         var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -368,4 +446,11 @@ public class ChatbotService(
             .Take(5)
             .ToList();
     }
+}
+
+// Allows string[] as dictionary key by comparing element equality
+file sealed class StringArrayComparer : IEqualityComparer<string[]>
+{
+    public bool Equals(string[]? x, string[]? y) => x is not null && y is not null && x.SequenceEqual(y);
+    public int GetHashCode(string[] obj) => obj.Aggregate(0, (h, s) => HashCode.Combine(h, s.GetHashCode()));
 }
