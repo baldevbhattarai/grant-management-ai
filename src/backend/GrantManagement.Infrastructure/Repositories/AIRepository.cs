@@ -55,6 +55,15 @@ public class AIRepository(ApplicationDbContext db) : IAIRepository
         }
     }
 
+    public async Task<AIUsageLog?> GetUsageLogAsync(Guid logId) =>
+        await db.AIUsageLogs.FindAsync(logId);
+
+    public async Task AddApprovedContentAsync(AIApprovedContent content)
+    {
+        db.AIApprovedContent.Add(content);
+        await db.SaveChangesAsync();
+    }
+
     public async Task<List<ReportSection>> SearchSectionsAsync(Guid grantId, string keyword, int topN = 5)
     {
         var lower = keyword.ToLower();

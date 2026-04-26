@@ -162,6 +162,7 @@ export class AiSuggestionComponent {
           this.suggestion = res.suggestedText;
           this.tokensUsed = res.tokensUsed;
           this.cost = res.estimatedCost;
+          this.lastLogId = res.logId;
         } else {
           this.snackBar.open(res.errorMessage || 'AI service unavailable', 'Close', { duration: 5000 });
         }
@@ -175,13 +176,28 @@ export class AiSuggestionComponent {
 
   accept() {
     if (this.suggestion) {
-      this.suggestionAccepted.emit(this.suggestion);
+      const text = this.suggestion;
+      this.suggestionAccepted.emit(text);
+
+      // Send feedback with the accepted text so it can be promoted to the example pool
+      if (this.lastLogId) {
+        this.aiService.sendFeedback({
+          logId: this.lastLogId,
+          userAction: 'Accepted',
+          userRating: 5,
+          acceptedText: text
+        }).subscribe();
+      }
+
       this.suggestion = null;
-      this.snackBar.open('Suggestion accepted!', '', { duration: 2000 });
+      this.snackBar.open('Suggestion accepted and added to example pool!', '', { duration: 2500 });
     }
   }
 
   dismiss() {
+    if (this.lastLogId) {
+      this.aiService.sendFeedback({ logId: this.lastLogId, userAction: 'Rejected' }).subscribe();
+    }
     this.suggestion = null;
   }
 }

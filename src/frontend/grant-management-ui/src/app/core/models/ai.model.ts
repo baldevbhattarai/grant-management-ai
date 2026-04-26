@@ -11,12 +11,14 @@ export interface SuggestionResponse {
   errorMessage: string | null;
   tokensUsed: number;
   estimatedCost: number;
+  logId: string | null;
 }
 
 export interface FeedbackRequest {
   logId: string;
   userAction: 'Accepted' | 'Rejected' | 'Edited' | 'Regenerated';
   userRating?: number;
+  acceptedText?: string;
 }
 
 export interface ChatRequest {

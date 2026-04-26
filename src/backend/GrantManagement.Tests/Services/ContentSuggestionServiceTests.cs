@@ -10,11 +10,12 @@ namespace GrantManagement.Tests.Services;
 public class ContentSuggestionServiceTests
 {
     private readonly Mock<IReportRepository> _reportRepo = new();
+    private readonly Mock<IGrantRepository> _grantRepo = new();
     private readonly Mock<IAIRepository> _aiRepo = new();
     private readonly Mock<IOpenAIService> _openAI = new();
 
     private ContentSuggestionService CreateSut() =>
-        new(_reportRepo.Object, _aiRepo.Object, _openAI.Object,
+        new(_reportRepo.Object, _grantRepo.Object, _aiRepo.Object, _openAI.Object,
             NullLogger<ContentSuggestionService>.Instance);
 
     // ── Happy path ────────────────────────────────────────────────────────────

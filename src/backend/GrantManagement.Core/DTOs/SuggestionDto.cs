@@ -16,6 +16,8 @@ public class SuggestionResponseDto
     public string? ErrorMessage { get; set; }
     public int TokensUsed { get; set; }
     public decimal EstimatedCost { get; set; }
+    /// <summary>Log ID returned so the frontend can send feedback referencing this generation.</summary>
+    public Guid? LogId { get; set; }
 }
 
 public class FeedbackRequestDto
@@ -23,4 +25,6 @@ public class FeedbackRequestDto
     public Guid LogId { get; set; }
     public string UserAction { get; set; } = string.Empty; // Accepted, Rejected, Edited, Regenerated
     public int? UserRating { get; set; }
+    /// <summary>The accepted/edited text — provided so accepted suggestions can be promoted to the example pool.</summary>
+    public string? AcceptedText { get; set; }
 }

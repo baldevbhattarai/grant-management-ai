@@ -7,6 +7,7 @@ namespace GrantManagement.Services.AI;
 
 public class ContentSuggestionService(
     IReportRepository reportRepo,
+    IGrantRepository grantRepo,
     IAIRepository aiRepo,
     IOpenAIService openAI,
     ILogger<ContentSuggestionService> logger) : IContentSuggestionService
@@ -44,7 +45,7 @@ public class ContentSuggestionService(
         var cost = CalculateCost(result.PromptTokens, result.CompletionTokens);
 
         // 6. Log usage
-        await aiRepo.LogUsageAsync(new AIUsageLog
+        var logId = await aiRepo.LogUsageAsync(new AIUsageLog
         {
             UserId = request.UserId,
             GrantId = grant.GrantId,
@@ -72,13 +73,52 @@ public class ContentSuggestionService(
             Success = true,
             SuggestedText = result.Content,
             TokensUsed = result.PromptTokens + result.CompletionTokens,
-            EstimatedCost = cost
+            EstimatedCost = cost,
+            LogId = logId
         };
     }
 
     public async Task RecordFeedbackAsync(FeedbackRequestDto feedback)
     {
         await aiRepo.UpdateFeedbackAsync(feedback.LogId, feedback.UserAction, feedback.UserRating);
+
+        // Promote accepted suggestions into the example pool for future generations
+        if (feedback.UserAction is "Accepted" or "Edited" &&
+            !string.IsNullOrWhiteSpace(feedback.AcceptedText))
+        {
+            _ = PromoteToApprovedContentAsync(feedback);
+        }
+    }
+
+    private async Task PromoteToApprovedContentAsync(FeedbackRequestDto feedback)
+    {
+        try
+        {
+            var log = await aiRepo.GetUsageLogAsync(feedback.LogId);
+            if (log?.SectionName is null || log.ReportId is null) return;
+
+            var grant = await grantRepo.GetByIdAsync(log.GrantId);
+            if (grant is null) return;
+
+            await aiRepo.AddApprovedContentAsync(new AIApprovedContent
+            {
+                GrantId = log.GrantId,
+                ReportId = log.ReportId,
+                ProgramTypeCode = grant.ProgramTypeCode,
+                SectionName = log.SectionName,
+                Content = feedback.AcceptedText!,
+                ApprovalDate = DateTime.UtcNow,
+                ReviewerRating = feedback.UserRating ?? 4,
+                GrantType = grant.GrantType
+            });
+
+            logger.LogInformation("Promoted accepted suggestion to AIApprovedContent for grant {GrantId} section {Section}",
+                log.GrantId, log.SectionName);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to promote suggestion to approved content for log {LogId}", feedback.LogId);
+        }
     }
 
     private static string BuildSystemPrompt() =>
