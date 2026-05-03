@@ -81,7 +81,8 @@ public class QdrantVectorService(
     }
 
     public async Task UpsertAsync(Guid sectionId, float[] vector, Guid grantId, Guid reportId,
-        int reportingYear, string reportingQuarter, string sectionName, string responseText)
+        int reportingYear, string reportingQuarter, string sectionName, string responseText,
+        string? contentHash = null)
     {
         var client = GetClient();
         var point = new PointStruct
@@ -95,11 +96,66 @@ public class QdrantVectorService(
                 ["reportingYear"] = reportingYear,
                 ["reportingQuarter"] = reportingQuarter,
                 ["sectionName"] = sectionName,
-                ["responseText"] = responseText.Length > 1000 ? responseText[..1000] : responseText
+                ["responseText"] = responseText.Length > 1000 ? responseText[..1000] : responseText,
+                ["contentHash"] = contentHash ?? string.Empty
             }
         };
 
         await client.UpsertAsync(_collectionName, [point]);
+    }
+
+    /// <summary>Returns a map of sectionId → contentHash for all indexed points.</summary>
+    public async Task<Dictionary<Guid, string>> GetAllContentHashesAsync()
+    {
+        var client = GetClient();
+        var result = new Dictionary<Guid, string>();
+        string? nextOffset = null;
+
+        try
+        {
+            do
+            {
+                var offset = nextOffset is null ? null : new PointId { Uuid = nextOffset };
+                var scrollResult = await client.ScrollAsync(
+                    _collectionName,
+                    limit: 250,
+                    offset: offset,
+                    payloadSelector: true,
+                    vectorsSelector: false);
+
+                foreach (var point in scrollResult.Result)
+                {
+                    if (!Guid.TryParse(point.Id.Uuid, out var sectionId)) continue;
+                    var hash = point.Payload.TryGetValue("contentHash", out var h) ? h.StringValue : string.Empty;
+                    result[sectionId] = hash;
+                }
+
+                nextOffset = scrollResult.NextPageOffset?.Uuid;
+            }
+            while (nextOffset is not null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to fetch content hashes from Qdrant — will re-index all sections");
+        }
+
+        return result;
+    }
+
+    /// <summary>Deletes points in Qdrant whose sectionId is no longer present in SQL.</summary>
+    public async Task DeleteOrphanedAsync(IEnumerable<Guid> validSectionIds)
+    {
+        var client = GetClient();
+        var valid = new HashSet<Guid>(validSectionIds);
+        var allHashes = await GetAllContentHashesAsync();
+        var orphaned = allHashes.Keys.Where(id => !valid.Contains(id)).ToList();
+
+        if (orphaned.Count == 0) return;
+
+        foreach (var id in orphaned)
+            await client.DeleteAsync(_collectionName, id);
+
+        logger.LogInformation("Deleted {Count} orphaned Qdrant points", orphaned.Count);
     }
 
     public async Task BulkUpsertAsync(IEnumerable<VectorSectionDto> sections)

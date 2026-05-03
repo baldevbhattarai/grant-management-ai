@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using GrantManagement.Core.Interfaces;
 using GrantManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
@@ -33,14 +35,28 @@ public class VectorIndexingService(
             .Where(s => s.ResponseText != null && s.ResponseText.Length > 10)
             .ToListAsync(cancellationToken);
 
-        logger.LogInformation("Indexing {Count} report sections...", sections.Count);
+        logger.LogInformation("Indexing {Count} report sections (dirty-check enabled)...", sections.Count);
+
+        // Fetch existing hashes to skip unchanged sections
+        var existingHashes = await vectorService.GetAllContentHashesAsync();
+        var validSectionIds = sections.Select(s => s.SectionId).ToHashSet();
 
         var indexed = 0;
+        var skipped = 0;
         foreach (var section in sections)
         {
             if (cancellationToken.IsCancellationRequested) break;
             try
             {
+                var hash = ComputeHash(section.ResponseText!);
+
+                // Skip if hash matches — content unchanged
+                if (existingHashes.TryGetValue(section.SectionId, out var storedHash) && storedHash == hash)
+                {
+                    skipped++;
+                    continue;
+                }
+
                 var vector = await embeddingService.EmbedAsync(section.ResponseText!);
                 await vectorService.UpsertAsync(
                     section.SectionId,
@@ -50,7 +66,8 @@ public class VectorIndexingService(
                     section.Report.ReportingYear,
                     section.Report.ReportingQuarter,
                     section.SectionName,
-                    section.ResponseText!);
+                    section.ResponseText!,
+                    hash);
                 indexed++;
             }
             catch (Exception ex)
@@ -59,7 +76,12 @@ public class VectorIndexingService(
             }
         }
 
-        logger.LogInformation("Qdrant indexing complete — {Indexed}/{Total} sections indexed", indexed, sections.Count);
+        // Remove Qdrant points for sections that no longer exist in SQL
+        await vectorService.DeleteOrphanedAsync(validSectionIds);
+
+        logger.LogInformation(
+            "Qdrant indexing complete — {Indexed} re-indexed, {Skipped} unchanged, {Total} total",
+            indexed, skipped, sections.Count);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
@@ -71,10 +93,16 @@ public class VectorIndexingService(
         Guid sectionId, string responseText, Guid grantId, Guid reportId,
         int reportingYear, string reportingQuarter, string sectionName)
     {
+        var hash = ComputeHash(responseText);
         var vector = await embeddingService.EmbedAsync(responseText);
-        // Cast to QdrantVectorService to access UpsertAsync (not on interface — keeps interface minimal)
         if (vectorService is QdrantVectorService qdrant)
             await qdrant.UpsertAsync(sectionId, vector, grantId, reportId,
-                reportingYear, reportingQuarter, sectionName, responseText);
+                reportingYear, reportingQuarter, sectionName, responseText, hash);
+    }
+
+    private static string ComputeHash(string text)
+    {
+        var bytes = MD5.HashData(Encoding.UTF8.GetBytes(text));
+        return Convert.ToHexString(bytes);
     }
 }
