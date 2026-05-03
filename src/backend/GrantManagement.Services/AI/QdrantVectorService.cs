@@ -55,11 +55,7 @@ public class QdrantVectorService(
             if (!collections.Any(c => c == _collectionName))
             {
                 await client.CreateCollectionAsync(_collectionName,
-                    new VectorParams
-                    {
-                        Size = VectorSize,
-                        Distance = Distance.Cosine
-                    });
+                    new VectorParams { Size = VectorSize, Distance = Distance.Cosine });
                 logger.LogInformation("Qdrant collection '{Collection}' created", _collectionName);
             }
             else
@@ -75,36 +71,64 @@ public class QdrantVectorService(
 
     public Task UpsertSectionAsync(Guid sectionId, string text, Guid grantId, Guid reportId,
         int reportingYear, string reportingQuarter, string sectionName)
-    {
-        // Embedding is done by the caller — use VectorIndexingService.IndexSectionAsync instead
-        throw new NotSupportedException("Use VectorIndexingService.IndexSectionAsync directly");
-    }
+        => throw new NotSupportedException("Use VectorIndexingService.IndexSectionAsync directly");
 
-    public async Task UpsertAsync(Guid sectionId, float[] vector, Guid grantId, Guid reportId,
-        int reportingYear, string reportingQuarter, string sectionName, string responseText,
-        string? contentHash = null)
+    /// <summary>
+    /// Upserts a single chunk. Chunk 0 uses the original sectionId as its point ID
+    /// for backward compatibility; subsequent chunks use a derived deterministic UUID.
+    /// All chunks carry parentSectionId in the payload for deduplication and orphan cleanup.
+    /// </summary>
+    public async Task UpsertChunkAsync(
+        Guid sectionId,
+        int chunkIndex,
+        int totalChunks,
+        float[] vector,
+        Guid grantId,
+        Guid reportId,
+        int reportingYear,
+        string reportingQuarter,
+        string sectionName,
+        string chunkText,
+        string contentHash)
     {
         var client = GetClient();
+        var pointId = ChunkPointId(sectionId, chunkIndex);
+
         var point = new PointStruct
         {
-            Id = new PointId { Uuid = sectionId.ToString() },
+            Id = new PointId { Uuid = pointId.ToString() },
             Vectors = vector,
             Payload =
             {
-                ["grantId"] = grantId.ToString(),
-                ["reportId"] = reportId.ToString(),
-                ["reportingYear"] = reportingYear,
-                ["reportingQuarter"] = reportingQuarter,
-                ["sectionName"] = sectionName,
-                ["responseText"] = responseText.Length > 1000 ? responseText[..1000] : responseText,
-                ["contentHash"] = contentHash ?? string.Empty
+                ["parentSectionId"] = sectionId.ToString(),
+                ["chunkIndex"]      = chunkIndex,
+                ["totalChunks"]     = totalChunks,
+                ["grantId"]         = grantId.ToString(),
+                ["reportId"]        = reportId.ToString(),
+                ["reportingYear"]   = reportingYear,
+                ["reportingQuarter"]= reportingQuarter,
+                ["sectionName"]     = sectionName,
+                ["responseText"]    = chunkText.Length > 1000 ? chunkText[..1000] : chunkText,
+                ["contentHash"]     = contentHash
             }
         };
 
         await client.UpsertAsync(_collectionName, [point]);
     }
 
-    /// <summary>Returns a map of sectionId → contentHash for all indexed points.</summary>
+    // Kept for on-demand single-section re-index (backward compat — wraps UpsertChunkAsync)
+    public async Task UpsertAsync(Guid sectionId, float[] vector, Guid grantId, Guid reportId,
+        int reportingYear, string reportingQuarter, string sectionName, string responseText,
+        string? contentHash = null)
+    {
+        await UpsertChunkAsync(sectionId, 0, 1, vector, grantId, reportId,
+            reportingYear, reportingQuarter, sectionName, responseText, contentHash ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Returns parentSectionId → contentHash for all indexed points.
+    /// Groups by parentSectionId so callers work with section-level granularity.
+    /// </summary>
     public async Task<Dictionary<Guid, string>> GetAllContentHashesAsync()
     {
         var client = GetClient();
@@ -125,9 +149,16 @@ public class QdrantVectorService(
 
                 foreach (var point in scrollResult.Result)
                 {
-                    if (!Guid.TryParse(point.Id.Uuid, out var sectionId)) continue;
+                    // Resolve parentSectionId (new chunks) or fall back to point UUID (old single points)
+                    var parentIdStr = point.Payload.TryGetValue("parentSectionId", out var pid)
+                        ? pid.StringValue
+                        : point.Id.Uuid;
+
+                    if (!Guid.TryParse(parentIdStr, out var parentId)) continue;
+                    if (result.ContainsKey(parentId)) continue; // already captured from another chunk
+
                     var hash = point.Payload.TryGetValue("contentHash", out var h) ? h.StringValue : string.Empty;
-                    result[sectionId] = hash;
+                    result[parentId] = hash;
                 }
 
                 nextOffset = scrollResult.NextPageOffset?.Uuid;
@@ -142,29 +173,46 @@ public class QdrantVectorService(
         return result;
     }
 
-    /// <summary>Deletes points in Qdrant whose sectionId is no longer present in SQL.</summary>
+    /// <summary>
+    /// Deletes all Qdrant points whose parentSectionId is not in the valid set.
+    /// Handles multi-chunk sections by deleting via payload filter.
+    /// </summary>
     public async Task DeleteOrphanedAsync(IEnumerable<Guid> validSectionIds)
     {
         var client = GetClient();
         var valid = new HashSet<Guid>(validSectionIds);
         var allHashes = await GetAllContentHashesAsync();
-        var orphaned = allHashes.Keys.Where(id => !valid.Contains(id)).ToList();
+        var orphanedIds = allHashes.Keys.Where(id => !valid.Contains(id)).ToList();
 
-        if (orphaned.Count == 0) return;
+        if (orphanedIds.Count == 0) return;
 
-        foreach (var id in orphaned)
-            await client.DeleteAsync(_collectionName, id);
+        foreach (var parentId in orphanedIds)
+        {
+            var filter = new Filter
+            {
+                Must =
+                {
+                    new Condition
+                    {
+                        Field = new FieldCondition
+                        {
+                            Key = "parentSectionId",
+                            Match = new Match { Text = parentId.ToString() }
+                        }
+                    }
+                }
+            };
+            await client.DeleteAsync(_collectionName, filter);
+        }
 
-        logger.LogInformation("Deleted {Count} orphaned Qdrant points", orphaned.Count);
+        logger.LogInformation("Deleted {Count} orphaned section(s) from Qdrant", orphanedIds.Count);
     }
 
     public async Task BulkUpsertAsync(IEnumerable<VectorSectionDto> sections)
-    {
-        // Bulk upsert is driven by VectorIndexingService which handles embeddings
-        await Task.CompletedTask;
-    }
+        => await Task.CompletedTask; // driven by VectorIndexingService
 
-    public async Task<List<VectorSearchResult>> SearchAsync(float[] queryVector, Guid grantId, int topN = 3, float minScore = 0.5f)
+    public async Task<List<VectorSearchResult>> SearchAsync(
+        float[] queryVector, Guid grantId, int topN = 3, float minScore = 0.5f)
     {
         try
         {
@@ -185,30 +233,49 @@ public class QdrantVectorService(
                 }
             };
 
+            // Fetch more results than topN to allow deduplication across chunks
+            var rawLimit = (ulong)(topN * 4);
             var results = await client.SearchAsync(
                 _collectionName,
                 (ReadOnlyMemory<float>)queryVector,
                 filter: filter,
-                limit: (ulong)topN,
+                limit: rawLimit,
                 scoreThreshold: minScore,
                 payloadSelector: true);
 
-            return results.Select(r =>
+            // Deduplicate by parentSectionId — keep the highest-scoring chunk per section
+            var seen = new Dictionary<Guid, VectorSearchResult>();
+
+            foreach (var r in results)
             {
+                var parentIdStr = r.Payload.TryGetValue("parentSectionId", out var pid)
+                    ? pid.StringValue
+                    : r.Id.Uuid;
+
+                if (!Guid.TryParse(parentIdStr, out var parentId)) continue;
+
                 Guid? reportId = null;
                 if (r.Payload.TryGetValue("reportId", out var rid) &&
                     Guid.TryParse(rid.StringValue, out var parsedReportId))
                     reportId = parsedReportId;
 
-                return new VectorSearchResult(
-                    SectionId: Guid.Parse(r.Id.Uuid),
+                var result = new VectorSearchResult(
+                    SectionId: parentId,
                     Score: r.Score,
                     ResponseText: r.Payload.TryGetValue("responseText", out var rt) ? rt.StringValue : string.Empty,
                     SectionName: r.Payload.TryGetValue("sectionName", out var sn) ? sn.StringValue : string.Empty,
                     ReportingYear: r.Payload.TryGetValue("reportingYear", out var ry) ? (int)ry.IntegerValue : 0,
                     ReportingQuarter: r.Payload.TryGetValue("reportingQuarter", out var rq) ? rq.StringValue : string.Empty,
                     ReportId: reportId);
-            }).ToList();
+
+                if (!seen.TryGetValue(parentId, out var existing) || r.Score > existing.Score)
+                    seen[parentId] = result;
+            }
+
+            return seen.Values
+                .OrderByDescending(r => r.Score)
+                .Take(topN)
+                .ToList();
         }
         catch (Exception ex)
         {
@@ -220,6 +287,31 @@ public class QdrantVectorService(
     public async Task DeleteSectionAsync(Guid sectionId)
     {
         var client = GetClient();
-        await client.DeleteAsync(_collectionName, sectionId);
+        // Delete all chunks for this section via parentSectionId filter
+        var filter = new Filter
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition
+                    {
+                        Key = "parentSectionId",
+                        Match = new Match { Text = sectionId.ToString() }
+                    }
+                }
+            }
+        };
+        await client.DeleteAsync(_collectionName, filter);
+    }
+
+    /// <summary>Deterministic chunk point ID. Chunk 0 reuses the original sectionId.</summary>
+    private static Guid ChunkPointId(Guid sectionId, int chunkIndex)
+    {
+        if (chunkIndex == 0) return sectionId;
+        var bytes = sectionId.ToByteArray();
+        var idxBytes = BitConverter.GetBytes(chunkIndex);
+        for (var i = 0; i < 4; i++) bytes[12 + i] ^= idxBytes[i];
+        return new Guid(bytes);
     }
 }

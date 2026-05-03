@@ -57,17 +57,10 @@ public class VectorIndexingService(
                     continue;
                 }
 
-                var vector = await embeddingService.EmbedAsync(section.ResponseText!);
-                await vectorService.UpsertAsync(
-                    section.SectionId,
-                    vector,
-                    section.Report.GrantId,
-                    section.ReportId,
-                    section.Report.ReportingYear,
-                    section.Report.ReportingQuarter,
-                    section.SectionName,
-                    section.ResponseText!,
-                    hash);
+                await IndexChunksAsync(embeddingService, vectorService, section.SectionId,
+                    section.ResponseText!, section.Report.GrantId, section.ReportId,
+                    section.Report.ReportingYear, section.Report.ReportingQuarter,
+                    section.SectionName, hash);
                 indexed++;
             }
             catch (Exception ex)
@@ -86,18 +79,39 @@ public class VectorIndexingService(
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    /// <summary>Index or re-index a single section (called after save).</summary>
+    /// <summary>Index or re-index a single section on-demand (called after save).</summary>
     public static async Task IndexSectionAsync(
         IEmbeddingService embeddingService,
         IVectorSearchService vectorService,
         Guid sectionId, string responseText, Guid grantId, Guid reportId,
         int reportingYear, string reportingQuarter, string sectionName)
     {
+        if (vectorService is not QdrantVectorService qdrant) return;
         var hash = ComputeHash(responseText);
-        var vector = await embeddingService.EmbedAsync(responseText);
-        if (vectorService is QdrantVectorService qdrant)
-            await qdrant.UpsertAsync(sectionId, vector, grantId, reportId,
-                reportingYear, reportingQuarter, sectionName, responseText, hash);
+        await IndexChunksAsync(embeddingService, qdrant, sectionId, responseText,
+            grantId, reportId, reportingYear, reportingQuarter, sectionName, hash);
+    }
+
+    /// <summary>
+    /// Chunks the section text and upserts each chunk into Qdrant.
+    /// Short sections produce a single chunk; long sections produce 2–6 overlapping chunks.
+    /// </summary>
+    private static async Task IndexChunksAsync(
+        IEmbeddingService embeddingService,
+        QdrantVectorService qdrant,
+        Guid sectionId, string responseText, Guid grantId, Guid reportId,
+        int reportingYear, string reportingQuarter, string sectionName, string hash)
+    {
+        var chunks = TextChunker.Chunk(responseText);
+        foreach (var chunk in chunks)
+        {
+            var vector = await embeddingService.EmbedAsync(chunk.Text);
+            await qdrant.UpsertChunkAsync(
+                sectionId, chunk.ChunkIndex, chunk.TotalChunks,
+                vector, grantId, reportId,
+                reportingYear, reportingQuarter, sectionName,
+                chunk.Text, hash);
+        }
     }
 
     private static string ComputeHash(string text)
