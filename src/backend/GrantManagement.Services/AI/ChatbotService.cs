@@ -251,80 +251,110 @@ public class ChatbotService(
             : question;
     }
 
-    // Returns (sourceDtos, context text block, maxConfidenceScore) — tries vector search first, falls back to SQL LIKE
+    // Hybrid RAG: runs vector search and keyword search in parallel, fuses results with
+    // Reciprocal Rank Fusion (RRF). Falls back to keyword-only if vector search fails.
     private async Task<(List<ChatSourceDto>, string, float?)> BuildContextAsync(string question, Guid grantId)
     {
-        try
-        {
-            var queryVector = await embeddingService.EmbedAsync(question);
-            var vectorResults = await vectorService.SearchAsync(queryVector, grantId, topN: 3, minScore: 0.45f);
-
-            if (vectorResults.Count > 0)
-            {
-                logger.LogDebug("Vector search returned {Count} results for grant {GrantId}", vectorResults.Count, grantId);
-
-                var maxScore = vectorResults.Max(r => r.Score);
-
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("Report context (semantic search):");
-                foreach (var r in vectorResults)
-                {
-                    var snippet = r.ResponseText.Length > 300 ? r.ResponseText[..300] + "…" : r.ResponseText;
-                    sb.AppendLine($"[{r.ReportingYear} {r.ReportingQuarter} - {r.SectionName}]: {snippet}");
-                }
-
-                var dtos = vectorResults.Select(r => new ChatSourceDto
-                {
-                    ReportPeriod = $"{r.ReportingYear} {r.ReportingQuarter}",
-                    SectionName = r.SectionName,
-                    Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText,
-                    ReportId = r.ReportId
-                }).ToList();
-
-                return (dtos, sb.ToString(), maxScore);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Vector search unavailable — falling back to keyword search");
-        }
-
-        // SQL LIKE keyword fallback — no confidence score available
-        var (fallbackDtos, fallbackContext) = await KeywordFallbackAsync(question, grantId);
-        return (fallbackDtos, fallbackContext, null);
-    }
-
-    private async Task<(List<ChatSourceDto>, string)> KeywordFallbackAsync(string question, Guid grantId)  // returns without confidence score
-    {
+        // Embed and keyword-extract in parallel
+        var embedTask = embeddingService.EmbedAsync(question);
         var keywords = ExtractKeywords(question);
-        var sections = new List<ReportSection>();
-        foreach (var kw in keywords)
-        {
-            var found = await aiRepo.SearchSectionsAsync(grantId, kw, topN: 3);
-            sections.AddRange(found);
-        }
+        var queryVector = await embedTask;
 
-        var unique = sections.DistinctBy(s => s.SectionId).Take(2).ToList();
+        // Launch both searches concurrently
+        var vectorTask = Task.Run(async () =>
+        {
+            try { return await vectorService.SearchAsync(queryVector, grantId, topN: 5, minScore: 0.4f); }
+            catch (Exception ex) { logger.LogWarning(ex, "Vector search failed — using keyword results only"); return new List<VectorSearchResult>(); }
+        });
+
+        var keywordTask = Task.Run(async () =>
+        {
+            var sections = new List<ReportSection>();
+            foreach (var kw in keywords)
+                sections.AddRange(await aiRepo.SearchSectionsAsync(grantId, kw, topN: 3));
+            return sections.DistinctBy(s => s.SectionId).Take(5).ToList();
+        });
+
+        await Task.WhenAll(vectorTask, keywordTask);
+
+        var vectorResults = vectorTask.Result;
+        var keywordSections = keywordTask.Result;
+
+        // Convert keyword sections to VectorSearchResult for unified RRF input
+        var keywordResults = keywordSections.Select((s, i) => new VectorSearchResult(
+            SectionId: s.SectionId,
+            Score: 1.0f / (60 + i + 1),   // synthetic score for RRF ordering
+            ResponseText: s.ResponseText ?? string.Empty,
+            SectionName: s.SectionName,
+            ReportingYear: s.Report?.ReportingYear ?? 0,
+            ReportingQuarter: s.Report?.ReportingQuarter ?? string.Empty,
+            ReportId: s.ReportId)).ToList();
+
+        var hasVector = vectorResults.Count > 0;
+        var hasKeyword = keywordResults.Count > 0;
+
+        if (!hasVector && !hasKeyword)
+            return ([], "No relevant report content found.", null);
+
+        // Fuse with RRF when both sources have results; otherwise use whichever is available
+        var merged = (hasVector && hasKeyword)
+            ? FuseWithRRF(vectorResults, keywordResults, topN: 4)
+            : hasVector ? vectorResults.Take(4).ToList()
+                        : keywordResults.Take(4).ToList();
+
+        var label = (hasVector && hasKeyword) ? "hybrid (semantic + keyword)" : hasVector ? "semantic" : "keyword";
+        var maxScore = hasVector ? vectorResults.Max(r => r.Score) : (float?)null;
+
+        logger.LogDebug("Hybrid RAG [{Label}]: {VectorCount} vector + {KeywordCount} keyword → {MergedCount} merged",
+            label, vectorResults.Count, keywordResults.Count, merged.Count);
 
         var sb = new System.Text.StringBuilder();
-        if (unique.Count > 0)
+        sb.AppendLine($"Report context ({label} search):");
+        foreach (var r in merged)
         {
-            sb.AppendLine("Report context (keyword search):");
-            foreach (var s in unique)
-            {
-                var snippet = s.ResponseText?.Length > 300 ? s.ResponseText[..300] + "…" : s.ResponseText ?? string.Empty;
-                sb.AppendLine($"[{s.Report.ReportingYear} {s.Report.ReportingQuarter} - {s.SectionName}]: {snippet}");
-            }
+            var snippet = r.ResponseText.Length > 300 ? r.ResponseText[..300] + "…" : r.ResponseText;
+            sb.AppendLine($"[{r.ReportingYear} {r.ReportingQuarter} - {r.SectionName}]: {snippet}");
         }
 
-        var dtos = unique.Select(s => new ChatSourceDto
+        var dtos = merged.Select(r => new ChatSourceDto
         {
-            ReportPeriod = $"{s.Report.ReportingYear} {s.Report.ReportingQuarter}",
-            SectionName = s.SectionName,
-            Snippet = s.ResponseText?.Length > 200 ? s.ResponseText[..200] + "..." : s.ResponseText ?? string.Empty
+            ReportPeriod = $"{r.ReportingYear} {r.ReportingQuarter}",
+            SectionName = r.SectionName,
+            Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText,
+            ReportId = r.ReportId
         }).ToList();
 
-        return (dtos, sb.ToString());
+        return (dtos, sb.ToString(), maxScore);
+    }
+
+    // Reciprocal Rank Fusion: score(d) = Σ 1/(k + rank). k=60 is the standard constant.
+    private static List<VectorSearchResult> FuseWithRRF(
+        List<VectorSearchResult> vectorResults,
+        List<VectorSearchResult> keywordResults,
+        int topN = 4, int k = 60)
+    {
+        var scores = new Dictionary<Guid, double>();
+        var resultMap = new Dictionary<Guid, VectorSearchResult>();
+
+        for (var i = 0; i < vectorResults.Count; i++)
+        {
+            var r = vectorResults[i];
+            scores[r.SectionId] = scores.GetValueOrDefault(r.SectionId) + 1.0 / (k + i + 1);
+            resultMap[r.SectionId] = r;
+        }
+
+        for (var i = 0; i < keywordResults.Count; i++)
+        {
+            var r = keywordResults[i];
+            scores[r.SectionId] = scores.GetValueOrDefault(r.SectionId) + 1.0 / (k + i + 1);
+            resultMap.TryAdd(r.SectionId, r);
+        }
+
+        return scores
+            .OrderByDescending(kvp => kvp.Value)
+            .Take(topN)
+            .Select(kvp => resultMap[kvp.Key] with { Score = (float)kvp.Value })
+            .ToList();
     }
 
     private static string BuildSystemPrompt(Core.Entities.Grant grant, float? confidenceScore = null)
