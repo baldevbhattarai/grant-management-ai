@@ -36,3 +36,13 @@ public class FeedbackRequestDto
     /// <summary>The accepted/edited text — provided so accepted suggestions can be promoted to the example pool.</summary>
     public string? AcceptedText { get; set; }
 }
+
+public record SectionDraftDto(
+    string SectionName,
+    string SectionTitle,
+    string? DraftedText,
+    bool Success,
+    string? ErrorMessage,
+    int? QualityScore,
+    int TokensUsed,
+    decimal EstimatedCost);

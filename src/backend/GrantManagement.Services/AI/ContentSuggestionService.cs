@@ -317,6 +317,49 @@ public class ContentSuggestionService(
         return sb.ToString();
     }
 
+    public async Task<List<SectionDraftDto>> DraftReportAsync(Guid reportId, Guid userId)
+    {
+        var report = await reportRepo.GetByIdWithSectionsAsync(reportId);
+        if (report is null) return [];
+
+        // Only draft text sections that have no content yet
+        var textSections = report.Sections
+            .Where(s => s.ResponseType == "Text" && string.IsNullOrWhiteSpace(s.ResponseText))
+            .OrderBy(s => s.SectionOrder)
+            .ToList();
+
+        if (textSections.Count == 0) return [];
+
+        // Limit to 4 concurrent AI calls to avoid rate-limiting
+        var semaphore = new SemaphoreSlim(4);
+        var tasks = textSections.Select(async section =>
+        {
+            await semaphore.WaitAsync();
+            try
+            {
+                var result = await GenerateSuggestionAsync(new SuggestionRequestDto
+                {
+                    ReportId = reportId,
+                    SectionName = section.SectionName,
+                    UserId = userId
+                });
+
+                return new SectionDraftDto(
+                    section.SectionName,
+                    section.SectionTitle,
+                    result.SuggestedText,
+                    result.Success,
+                    result.ErrorMessage,
+                    result.QualityScore,
+                    result.TokensUsed,
+                    result.EstimatedCost);
+            }
+            finally { semaphore.Release(); }
+        });
+
+        return (await Task.WhenAll(tasks)).ToList();
+    }
+
     private static decimal CalculateCost(int promptTokens, int completionTokens) =>
         (promptTokens / 1000m * PromptCostPer1K) + (completionTokens / 1000m * CompletionCostPer1K);
 }

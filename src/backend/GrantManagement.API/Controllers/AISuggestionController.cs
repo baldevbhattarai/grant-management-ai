@@ -52,4 +52,13 @@ public class AISuggestionController(IContentSuggestionService suggestionService)
         await suggestionService.RecordFeedbackAsync(request);
         return NoContent();
     }
+
+    /// <summary>Draft all missing text sections of a report in parallel (up to 4 concurrent AI calls)</summary>
+    [HttpPost("draft-report/{reportId:guid}")]
+    public async Task<IActionResult> DraftReport(Guid reportId, [FromQuery] Guid userId)
+    {
+        if (reportId == Guid.Empty) return BadRequest("reportId is required");
+        var drafts = await suggestionService.DraftReportAsync(reportId, userId);
+        return Ok(drafts);
+    }
 }

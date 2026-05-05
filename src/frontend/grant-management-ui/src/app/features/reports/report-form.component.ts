@@ -13,6 +13,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatChipsModule } from '@angular/material/chips';
 import { ReportService } from '../../core/services/report.service';
 import { SessionService } from '../../core/services/session.service';
+import { AiService } from '../../core/services/ai.service';
 import { Report, ReportSection } from '../../core/models/report.model';
 import { AiSuggestionComponent } from '../ai/ai-suggestion/ai-suggestion.component';
 
@@ -48,6 +49,15 @@ import { AiSuggestionComponent } from '../ai/ai-suggestion/ai-suggestion.compone
             </div>
           </mat-card-content>
         </mat-card>
+
+        <!-- Draft All button -->
+        <div class="draft-all-bar">
+          <button mat-flat-button color="accent" (click)="draftAll()" [disabled]="draftingAll">
+            <mat-icon>auto_awesome</mat-icon>
+            {{ draftingAll ? 'Drafting all sections…' : 'Draft All Sections with AI' }}
+          </button>
+          <span class="draft-all-note">Generates AI drafts for all empty text sections in parallel</span>
+        </div>
 
         <!-- Sections -->
         <div *ngFor="let section of report.sections; let i = index" class="section-card-wrap">
@@ -144,6 +154,8 @@ import { AiSuggestionComponent } from '../ai/ai-suggestion/ai-suggestion.compone
     .header-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
     .header-grid > div { display: flex; flex-direction: column; gap: 4px; }
     .field-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .draft-all-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .draft-all-note { font-size: 0.78rem; color: #888; }
     .section-card-wrap { margin-bottom: 20px; }
     .section-card mat-card-title { font-size: 1rem; display: flex; align-items: center; gap: 8px; }
     .required-badge { font-size: 0.7rem; background: #ffebee; color: #c62828; padding: 1px 6px; border-radius: 4px; }
@@ -161,11 +173,13 @@ export class ReportFormComponent implements OnInit {
   private router = inject(Router);
   private reportService = inject(ReportService);
   private session = inject(SessionService);
+  private aiService = inject(AiService);
   private snackBar = inject(MatSnackBar);
 
   report: Report | null = null;
   loading = true;
   savingSection: string | null = null;
+  draftingAll = false;
   get demoUserId() { return this.session.userId; }
 
   // Flat map sectionId → current value (string, number, or comma-list)
@@ -241,6 +255,31 @@ export class ReportFormComponent implements OnInit {
 
   getSelectedChips(sectionId: string): string[] {
     try { return JSON.parse(this.sectionValues[sectionId] || '[]'); } catch { return []; }
+  }
+
+  draftAll() {
+    if (!this.report || this.draftingAll) return;
+    this.draftingAll = true;
+    const userId = this.session.userId ?? '';
+    this.aiService.draftReport(this.report.reportId, userId).subscribe({
+      next: drafts => {
+        let drafted = 0;
+        for (const d of drafts) {
+          if (!d.success || !d.draftedText) continue;
+          const section = this.report!.sections.find(s => s.sectionName === d.sectionName);
+          if (section && !this.sectionValues[section.sectionId]) {
+            this.sectionValues[section.sectionId] = d.draftedText;
+            drafted++;
+          }
+        }
+        this.draftingAll = false;
+        this.snackBar.open(`Drafted ${drafted} section(s). Review and save each one.`, 'OK', { duration: 5000 });
+      },
+      error: () => {
+        this.draftingAll = false;
+        this.snackBar.open('Draft failed — check that the AI service is running.', 'Close', { duration: 5000 });
+      }
+    });
   }
 
   goBack() {
