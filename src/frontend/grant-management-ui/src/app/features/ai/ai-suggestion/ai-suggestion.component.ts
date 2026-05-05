@@ -6,6 +6,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatDialogModule, MatDialog } from '@angular/material/dialog';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
+import { QuillEditorComponent } from 'ngx-quill';
 import { AiService } from '../../../core/services/ai.service';
 
 interface DiffToken { text: string; type: 'same' | 'added' | 'removed'; }
@@ -15,7 +16,8 @@ interface DiffToken { text: string; type: 'same' | 'added' | 'removed'; }
   standalone: true,
   imports: [
     CommonModule, FormsModule, MatButtonModule, MatIconModule,
-    MatDialogModule, MatProgressSpinnerModule, MatSnackBarModule
+    MatDialogModule, MatProgressSpinnerModule, MatSnackBarModule,
+    QuillEditorComponent
   ],
   template: `
     <div class="ai-suggestion-wrap">
@@ -67,7 +69,11 @@ interface DiffToken { text: string; type: 'same' | 'added' | 'removed'; }
             </span>
             <span class="meta">{{ tokensUsed ? (tokensUsed + ' tokens · ~$' + (cost | number:'1.4-4')) : '' }}</span>
           </div>
-          <textarea class="suggestion-text" [(ngModel)]="suggestion" rows="8"></textarea>
+          <quill-editor class="suggestion-editor"
+            [(ngModel)]="suggestion"
+            [modules]="quillModules"
+            placeholder="AI suggestion will appear here…">
+          </quill-editor>
           <!-- Diff view -->
           <div *ngIf="showDiff && diffTokens.length > 0" class="diff-view">
             <div class="diff-legend">
@@ -181,12 +187,13 @@ interface DiffToken { text: string; type: 'same' | 'added' | 'removed'; }
     .quality-stars { display: flex; align-items: center; gap: 1px; }
     .star-icon { font-size: 14px; width: 14px; height: 14px; color: #ddd; }
     .star-icon.filled { color: #f59e0b; }
-    .suggestion-text {
-      width: 100%; box-sizing: border-box; border: 1px solid #e1bee7;
-      border-radius: 6px; padding: 10px; font-size: 0.88rem;
-      font-family: inherit; resize: vertical; background: #fff;
+    .suggestion-editor {
+      display: block; border: 1px solid #e1bee7; border-radius: 6px;
+      background: #fff; font-size: 0.88rem;
     }
-    .suggestion-text:focus { outline: none; border-color: #9c27b0; }
+    .suggestion-editor :host ::ng-deep .ql-toolbar { border-radius: 6px 6px 0 0; border-color: #e1bee7; background: #faf5ff; }
+    .suggestion-editor :host ::ng-deep .ql-container { border-radius: 0 0 6px 6px; border-color: #e1bee7; min-height: 120px; }
+    .suggestion-editor :host ::ng-deep .ql-editor { min-height: 120px; font-size: 0.88rem; font-family: inherit; }
     .diff-view { margin-top: 8px; border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; background: #fafafa; }
     .diff-legend { display: flex; gap: 12px; font-size: 0.72rem; margin-bottom: 6px; }
     .diff-added-legend { color: #16a34a; font-weight: 600; }
@@ -216,6 +223,14 @@ export class AiSuggestionComponent {
 
   private aiService = inject(AiService);
   private snackBar = inject(MatSnackBar);
+
+  readonly quillModules = {
+    toolbar: [
+      ['bold', 'italic', 'underline'],
+      [{ list: 'ordered' }, { list: 'bullet' }],
+      ['clean']
+    ]
+  };
 
   loading = false;
   suggestion: string | null = null;
@@ -271,7 +286,7 @@ export class AiSuggestionComponent {
 
   accept() {
     if (this.suggestion) {
-      const text = this.suggestion;
+      const text = this.stripHtml(this.suggestion);
       this.suggestionAccepted.emit(text);
 
       // Send feedback with the accepted text so it can be promoted to the example pool
@@ -300,7 +315,13 @@ export class AiSuggestionComponent {
   toggleDiff() {
     this.showDiff = !this.showDiff;
     if (this.showDiff && this.diffTokens.length === 0)
-      this.diffTokens = this.computeDiff(this.existingContent, this.suggestion ?? '');
+      this.diffTokens = this.computeDiff(this.existingContent, this.stripHtml(this.suggestion ?? ''));
+  }
+
+  private stripHtml(html: string): string {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent ?? tmp.innerText ?? '';
   }
 
   // Simple word-level diff using LCS
