@@ -34,6 +34,9 @@ public class ChatbotServiceTests
         // Structured data query returns empty by default
         _aiRepo.Setup(r => r.GetStructuredDataAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()))
                .ReturnsAsync([]);
+        // Document search returns empty by default
+        _vectorSearch.Setup(v => v.SearchDocumentsAsync(It.IsAny<float[]>(), It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<float>()))
+                     .ReturnsAsync([]);
     }
 
     private static IConfiguration EmptyConfig() => new ConfigurationBuilder().Build();

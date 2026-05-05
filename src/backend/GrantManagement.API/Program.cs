@@ -15,6 +15,7 @@ builder.Services.AddScoped<IGrantRepository, GrantRepository>();
 builder.Services.AddScoped<IReportRepository, ReportRepository>();
 builder.Services.AddScoped<IAIRepository, AIRepository>();
 builder.Services.AddScoped<IChatRepository, ChatRepository>();
+builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 
 // ── AI Services ───────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("openai");
@@ -24,11 +25,14 @@ builder.Services.AddScoped<IContentSuggestionService, ContentSuggestionService>(
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
 // Re-ranking via Cohere API — optional, degrades gracefully if AI:Rerank:Cohere:ApiKey is not set
 builder.Services.AddScoped<IRerankService, CohereRerankService>();
+// Document upload & indexing
+builder.Services.AddScoped<IDocumentProcessingService, DocumentProcessingService>();
 
 // ── Vector Search (Qdrant) ────────────────────────────────────────────────────
 builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();
 builder.Services.AddSingleton<QdrantVectorService>();
 builder.Services.AddSingleton<IVectorSearchService>(sp => sp.GetRequiredService<QdrantVectorService>());
+builder.Services.AddSingleton<IDocumentVectorService>(sp => sp.GetRequiredService<QdrantVectorService>());
 builder.Services.AddHostedService<VectorIndexingService>();
 
 // ── API / Swagger ─────────────────────────────────────────────────────────────

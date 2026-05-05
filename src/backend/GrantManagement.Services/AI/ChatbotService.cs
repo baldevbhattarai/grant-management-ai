@@ -285,7 +285,7 @@ public class ChatbotService(
             }
         }
 
-        // Embed all variants and run keyword search concurrently
+        // Embed all variants and run keyword + document search concurrently
         var keywords = ExtractKeywords(question);
         var embedTasks = queryVariants.Select(q => embeddingService.EmbedAsync(q)).ToList();
         var keywordTask = Task.Run(async () =>
@@ -298,6 +298,9 @@ public class ChatbotService(
 
         var queryVectors = await Task.WhenAll(embedTasks);
 
+        // Search uploaded documents in parallel with report section search
+        var docSearchTask = vectorService.SearchDocumentsAsync(queryVectors[0], grantId, topN: 3, minScore: 0.4f);
+
         // Vector search for every variant in parallel
         var vectorSearchTasks = queryVectors.Select(v => Task.Run(async () =>
         {
@@ -305,7 +308,7 @@ public class ChatbotService(
             catch (Exception ex) { logger.LogWarning(ex, "Vector search failed — using keyword results only"); return new List<VectorSearchResult>(); }
         })).ToList();
 
-        await Task.WhenAll([.. vectorSearchTasks, keywordTask]);
+        await Task.WhenAll([.. vectorSearchTasks, keywordTask, docSearchTask]);
 
         // Merge vector results across variants with RRF when multi-query was used
         var allVectorResultSets = vectorSearchTasks.Select(t => t.Result).ToList();
@@ -372,6 +375,26 @@ public class ChatbotService(
             Snippet = r.ResponseText.Length > 200 ? r.ResponseText[..200] + "..." : r.ResponseText,
             ReportId = r.ReportId
         }).ToList();
+
+        // Append uploaded document context if any were found
+        var docResults = docSearchTask.Result;
+        if (docResults.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine("Uploaded document context:");
+            foreach (var d in docResults)
+            {
+                var snippet = d.ChunkText.Length > 300 ? d.ChunkText[..300] + "…" : d.ChunkText;
+                sb.AppendLine($"[Uploaded: {d.FileName}]: {snippet}");
+                dtos.Add(new ChatSourceDto
+                {
+                    ReportPeriod = "Uploaded document",
+                    SectionName = d.FileName,
+                    Snippet = snippet,
+                    ReportId = null
+                });
+            }
+        }
 
         return (dtos, sb.ToString(), maxScore);
     }

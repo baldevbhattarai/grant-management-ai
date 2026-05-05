@@ -17,6 +17,9 @@ public interface IVectorSearchService
 
     /// <summary>Delete a section vector by ID.</summary>
     Task DeleteSectionAsync(Guid sectionId);
+
+    /// <summary>Semantic search across uploaded documents for a grant.</summary>
+    Task<List<DocumentSearchResult>> SearchDocumentsAsync(float[] queryVector, Guid grantId, int topN = 3, float minScore = 0.4f);
 }
 
 public record VectorSectionDto(
@@ -27,6 +30,13 @@ public record VectorSectionDto(
     int ReportingYear,
     string ReportingQuarter,
     string SectionName);
+
+public record DocumentSearchResult(
+    Guid DocumentId,
+    float Score,
+    string ChunkText,
+    string FileName,
+    int ChunkIndex);
 
 public record VectorSearchResult(
     Guid SectionId,

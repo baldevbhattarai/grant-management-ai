@@ -12,6 +12,7 @@ import { ChatMessage } from '../../../core/models/ai.model';
 import { GrantService } from '../../../core/services/grant.service';
 import { UserService } from '../../../core/services/user.service';
 import { SessionService } from '../../../core/services/session.service';
+import { DocumentService, UploadedDocument } from '../../../core/services/document.service';
 
 @Component({
   selector: 'app-chat-widget',
@@ -32,10 +33,14 @@ import { SessionService } from '../../../core/services/session.service';
     <div class="chat-panel" [class.visible]="open">
       <div class="chat-header">
         <mat-icon>smart_toy</mat-icon>
-        <span>{{ showHistory ? 'Past Sessions' : 'Grant Q&A Assistant' }}</span>
+        <span>{{ showHistory ? 'Past Sessions' : showDocs ? 'Documents' : 'Grant Q&A Assistant' }}</span>
         <button mat-icon-button class="header-btn" matTooltip="Session history"
           (click)="toggleHistory()">
           <mat-icon>{{ showHistory ? 'chat' : 'history' }}</mat-icon>
+        </button>
+        <button mat-icon-button class="header-btn" matTooltip="Documents"
+          (click)="toggleDocs()">
+          <mat-icon>{{ showDocs ? 'chat' : 'attach_file' }}</mat-icon>
         </button>
         <button mat-icon-button class="close-btn" (click)="togglePanel()">
           <mat-icon>close</mat-icon>
@@ -50,8 +55,40 @@ import { SessionService } from '../../../core/services/session.service';
         </select>
       </div>
 
+      <!-- Documents panel -->
+      <div class="docs-panel" *ngIf="showDocs">
+        <div class="docs-upload-zone"
+          (click)="fileInput.click()"
+          (dragover)="$event.preventDefault()"
+          (drop)="onFileDrop($event)">
+          <mat-icon>upload_file</mat-icon>
+          <p>Click or drop a PDF, DOCX, or TXT file (max 10MB)</p>
+          <input #fileInput type="file" accept=".pdf,.docx,.txt" hidden (change)="onFileChange($event)">
+        </div>
+        <div *ngIf="uploading" class="docs-uploading">
+          <mat-spinner diameter="20"></mat-spinner>
+          <span>Uploading & indexing…</span>
+        </div>
+        <div *ngIf="uploadError" class="docs-error">{{ uploadError }}</div>
+        <div class="docs-list">
+          <div *ngFor="let doc of uploadedDocs" class="doc-item">
+            <mat-icon class="doc-icon">{{ doc.contentType === 'application/pdf' ? 'picture_as_pdf' : 'description' }}</mat-icon>
+            <div class="doc-info">
+              <div class="doc-name">{{ doc.fileName }}</div>
+              <div class="doc-meta">{{ doc.chunkCount }} chunks · {{ (doc.fileSizeBytes / 1024).toFixed(0) }}KB</div>
+            </div>
+            <button mat-icon-button class="doc-delete" matTooltip="Remove" (click)="deleteDoc(doc)">
+              <mat-icon>delete_outline</mat-icon>
+            </button>
+          </div>
+          <div *ngIf="uploadedDocs.length === 0 && !uploading" class="docs-empty">
+            No documents uploaded yet.
+          </div>
+        </div>
+      </div>
+
       <!-- History panel -->
-      <div class="history-panel" *ngIf="showHistory">
+      <div class="history-panel" *ngIf="showHistory && !showDocs">
         <div *ngIf="sessionsLoading" class="history-loading">
           <mat-spinner diameter="28"></mat-spinner>
         </div>
@@ -68,7 +105,7 @@ import { SessionService } from '../../../core/services/session.service';
       </div>
 
       <!-- Messages -->
-      <div class="messages" #messagesContainer *ngIf="!showHistory">
+      <div class="messages" #messagesContainer *ngIf="!showHistory && !showDocs">
         <div class="welcome-msg" *ngIf="messages.length === 0">
           <mat-icon>auto_awesome</mat-icon>
           <p>Ask me anything about your grant reports!</p>
@@ -117,7 +154,7 @@ import { SessionService } from '../../../core/services/session.service';
       </div>
 
       <!-- Input -->
-      <div class="chat-input" *ngIf="!showHistory">
+      <div class="chat-input" *ngIf="!showHistory && !showDocs">
         <input #inputEl type="text" [(ngModel)]="currentQuestion"
           placeholder="Ask a question about your grants…"
           (keydown.enter)="send()"
@@ -217,6 +254,25 @@ import { SessionService } from '../../../core/services/session.service';
     .session-item:hover { background: #f3e5f5; border-color: #ce93d8; }
     .session-q { font-size: 0.85rem; color: #333; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .session-meta { font-size: 0.72rem; color: #999; margin-top: 2px; }
+    .docs-panel { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .docs-upload-zone {
+      border: 2px dashed #ce93d8; border-radius: 10px; padding: 20px 12px;
+      text-align: center; cursor: pointer; color: #6a1b9a; transition: background 0.15s;
+    }
+    .docs-upload-zone:hover { background: #f3e5f5; }
+    .docs-upload-zone mat-icon { font-size: 32px; width: 32px; height: 32px; }
+    .docs-upload-zone p { margin: 4px 0 0; font-size: 0.8rem; color: #777; }
+    .docs-uploading { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #555; padding: 4px 0; }
+    .docs-error { font-size: 0.8rem; color: #c62828; padding: 4px 0; }
+    .docs-list { display: flex; flex-direction: column; gap: 4px; }
+    .docs-empty { font-size: 0.82rem; color: #aaa; text-align: center; padding: 12px; }
+    .doc-item { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .doc-icon { color: #6a1b9a; font-size: 20px; width: 20px; height: 20px; }
+    .doc-info { flex: 1; min-width: 0; }
+    .doc-name { font-size: 0.82rem; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-meta { font-size: 0.72rem; color: #999; }
+    .doc-delete { color: #aaa; transform: scale(0.85); }
+    .doc-delete:hover { color: #c62828; }
   `]
 })
 export class ChatWidgetComponent implements AfterViewChecked {
@@ -226,17 +282,22 @@ export class ChatWidgetComponent implements AfterViewChecked {
   private grantService = inject(GrantService);
   private userService = inject(UserService);
   private session = inject(SessionService);
+  private docService = inject(DocumentService);
 
   open = false;
   loading = false;
   currentQuestion = '';
   showHistory = false;
+  showDocs = false;
   sessions: ChatSessionSummary[] = [];
   sessionsLoading = false;
   messages: ChatMessage[] = [];
   conversationId: string | undefined;
   selectedGrantId = '';
   grants: { grantId: string; grantNumber: string }[] = [];
+  uploadedDocs: UploadedDocument[] = [];
+  uploading = false;
+  uploadError = '';
 
   sampleQuestions = [
     'What did I write about telehealth last quarter?',
@@ -286,8 +347,58 @@ export class ChatWidgetComponent implements AfterViewChecked {
     this.conversationId = undefined;
   }
 
+  toggleDocs() {
+    this.showDocs = !this.showDocs;
+    if (this.showDocs) {
+      this.showHistory = false;
+      if (this.selectedGrantId) this.loadDocs();
+    }
+  }
+
+  loadDocs() {
+    this.docService.getDocuments(this.selectedGrantId).subscribe({
+      next: docs => { this.uploadedDocs = docs; },
+      error: () => {}
+    });
+  }
+
+  onFileChange(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input.files?.[0]) this.uploadFile(input.files[0]);
+  }
+
+  onFileDrop(event: DragEvent) {
+    event.preventDefault();
+    const file = event.dataTransfer?.files[0];
+    if (file) this.uploadFile(file);
+  }
+
+  uploadFile(file: File) {
+    this.uploadError = '';
+    this.uploading = true;
+    const userId = this.session.userId ?? '';
+    this.docService.uploadDocument(file, this.selectedGrantId, userId).subscribe({
+      next: doc => {
+        this.uploadedDocs.unshift(doc);
+        this.uploading = false;
+      },
+      error: err => {
+        this.uploadError = err.error ?? 'Upload failed — check file type and size.';
+        this.uploading = false;
+      }
+    });
+  }
+
+  deleteDoc(doc: UploadedDocument) {
+    this.docService.deleteDocument(doc.documentId).subscribe({
+      next: () => { this.uploadedDocs = this.uploadedDocs.filter(d => d.documentId !== doc.documentId); },
+      error: () => {}
+    });
+  }
+
   toggleHistory() {
     this.showHistory = !this.showHistory;
+    if (this.showHistory) this.showDocs = false;
     if (this.showHistory && this.selectedGrantId && this.session.userId) {
       this.sessionsLoading = true;
       this.chatService.getSessions(this.session.userId, this.selectedGrantId).subscribe({

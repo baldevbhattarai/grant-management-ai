@@ -12,6 +12,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<AIUsageLog> AIUsageLogs { get; set; }
     public DbSet<AIApprovedContent> AIApprovedContent { get; set; }
     public DbSet<ChatConversation> ChatConversations { get; set; }
+    public DbSet<AIUploadedDocument> AIUploadedDocuments { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,6 +88,16 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             e.HasKey(c => c.ConversationId);
             e.Property(c => c.Role).HasMaxLength(20).IsRequired();
             e.HasIndex(c => new { c.SessionId, c.CreatedDate });
+        });
+
+        modelBuilder.Entity<AIUploadedDocument>(e =>
+        {
+            e.ToTable("AI_UploadedDocuments");
+            e.HasKey(d => d.DocumentId);
+            e.Property(d => d.FileName).HasMaxLength(500).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(100).IsRequired();
+            e.HasOne(d => d.Grant).WithMany().HasForeignKey(d => d.GrantId);
+            e.HasIndex(d => new { d.GrantId, d.UploadedAt });
         });
     }
 }

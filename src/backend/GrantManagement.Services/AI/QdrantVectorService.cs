@@ -8,11 +8,12 @@ namespace GrantManagement.Services.AI;
 
 public class QdrantVectorService(
     IConfiguration config,
-    ILogger<QdrantVectorService> logger) : IVectorSearchService
+    ILogger<QdrantVectorService> logger) : IVectorSearchService, IDocumentVectorService
 {
     private const ulong VectorSize = 768; // nomic-embed-text dimension
     private QdrantClient? _client;
     private string _collectionName = "report_sections";
+    private string _documentsCollectionName = "uploaded_documents";
 
     private QdrantClient GetClient()
     {
@@ -22,6 +23,7 @@ public class QdrantVectorService(
         _collectionName = config["AI:VectorSearch:Qdrant:Cloud:CollectionName"]
                        ?? config["AI:VectorSearch:Qdrant:Local:CollectionName"]
                        ?? "report_sections";
+        _documentsCollectionName = config["AI:VectorSearch:Qdrant:DocumentsCollectionName"] ?? "uploaded_documents";
 
         if (mode.Equals("Cloud", StringComparison.OrdinalIgnoreCase))
         {
@@ -303,6 +305,119 @@ public class QdrantVectorService(
             }
         };
         await client.DeleteAsync(_collectionName, filter);
+    }
+
+    // ── Uploaded document vector methods ─────────────────────────────────────
+
+    public async Task EnsureDocumentsCollectionAsync()
+    {
+        try
+        {
+            var client = GetClient();
+            var collections = await client.ListCollectionsAsync();
+            if (!collections.Any(c => c == _documentsCollectionName))
+            {
+                await client.CreateCollectionAsync(_documentsCollectionName,
+                    new VectorParams { Size = VectorSize, Distance = Distance.Cosine });
+                logger.LogInformation("Qdrant collection '{Collection}' created", _documentsCollectionName);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to ensure documents Qdrant collection");
+        }
+    }
+
+    public async Task UpsertDocumentChunkAsync(
+        Guid documentId, int chunkIndex, int totalChunks, float[] vector,
+        Guid grantId, Guid userId, string fileName, string chunkText)
+    {
+        var client = GetClient();
+        var pointId = ChunkPointId(documentId, chunkIndex);
+
+        var point = new PointStruct
+        {
+            Id = new PointId { Uuid = pointId.ToString() },
+            Vectors = vector,
+            Payload =
+            {
+                ["documentId"]  = documentId.ToString(),
+                ["chunkIndex"]  = chunkIndex,
+                ["totalChunks"] = totalChunks,
+                ["grantId"]     = grantId.ToString(),
+                ["userId"]      = userId.ToString(),
+                ["fileName"]    = fileName,
+                ["chunkText"]   = chunkText.Length > 1000 ? chunkText[..1000] : chunkText
+            }
+        };
+
+        await client.UpsertAsync(_documentsCollectionName, [point]);
+    }
+
+    public async Task DeleteDocumentAsync(Guid documentId)
+    {
+        var client = GetClient();
+        var filter = new Filter
+        {
+            Must =
+            {
+                new Condition
+                {
+                    Field = new FieldCondition
+                    {
+                        Key = "documentId",
+                        Match = new Match { Text = documentId.ToString() }
+                    }
+                }
+            }
+        };
+        await client.DeleteAsync(_documentsCollectionName, filter);
+    }
+
+    public async Task<List<DocumentSearchResult>> SearchDocumentsAsync(
+        float[] queryVector, Guid grantId, int topN = 3, float minScore = 0.4f)
+    {
+        try
+        {
+            var client = GetClient();
+            var filter = new Filter
+            {
+                Must =
+                {
+                    new Condition
+                    {
+                        Field = new FieldCondition
+                        {
+                            Key = "grantId",
+                            Match = new Match { Text = grantId.ToString() }
+                        }
+                    }
+                }
+            };
+
+            var results = await client.SearchAsync(
+                _documentsCollectionName,
+                (ReadOnlyMemory<float>)queryVector,
+                filter: filter,
+                limit: (ulong)topN,
+                scoreThreshold: minScore,
+                payloadSelector: true);
+
+            return results.Select(r => new DocumentSearchResult(
+                DocumentId: Guid.TryParse(
+                    r.Payload.TryGetValue("documentId", out var did) ? did.StringValue : string.Empty,
+                    out var docId) ? docId : Guid.Empty,
+                Score: r.Score,
+                ChunkText: r.Payload.TryGetValue("chunkText", out var ct) ? ct.StringValue : string.Empty,
+                FileName: r.Payload.TryGetValue("fileName", out var fn) ? fn.StringValue : string.Empty,
+                ChunkIndex: r.Payload.TryGetValue("chunkIndex", out var ci) ? (int)ci.IntegerValue : 0))
+            .ToList();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Qdrant document search failed for grantId {GrantId}", grantId);
+            return [];
+        }
     }
 
     /// <summary>Deterministic chunk point ID. Chunk 0 reuses the original sectionId.</summary>
