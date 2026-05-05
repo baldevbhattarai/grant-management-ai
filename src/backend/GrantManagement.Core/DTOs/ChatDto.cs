@@ -30,6 +30,23 @@ public class ChatSourceDto
     public Guid? ReportId { get; set; }
 }
 
+public class CompareGrantsRequestDto
+{
+    public List<Guid> GrantIds { get; set; } = [];
+    public string Question { get; set; } = string.Empty;
+    public Guid? UserId { get; set; }
+}
+
+public class CompareGrantsResponseDto
+{
+    public bool Success { get; set; }
+    public string? Answer { get; set; }
+    public string? ErrorMessage { get; set; }
+    public List<GrantContextSummary> GrantContexts { get; set; } = [];
+}
+
+public record GrantContextSummary(Guid GrantId, string GrantNumber, int ChunksFound, float? TopScore);
+
 public record ChatSessionSummary(
     Guid SessionId,
     string FirstQuestion,

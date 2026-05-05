@@ -26,6 +26,18 @@ public class ChatbotController(IChatbotService chatbotService, IChatRepository c
         return Ok(messages.Select(m => new { m.Role, m.Content, m.CreatedDate }));
     }
 
+    /// <summary>Ask a question across multiple grants and get a comparative answer</summary>
+    [HttpPost("compare")]
+    public async Task<IActionResult> Compare([FromBody] CompareGrantsRequestDto request)
+    {
+        if (request.GrantIds.Count == 0 || string.IsNullOrWhiteSpace(request.Question))
+            return BadRequest("GrantIds and Question are required");
+        if (request.GrantIds.Count > 5)
+            return BadRequest("Maximum 5 grants per comparison");
+        var result = await chatbotService.CompareGrantsAsync(request);
+        return Ok(result);
+    }
+
     /// <summary>Ask a natural language question about grant data</summary>
     [HttpPost]
     public async Task<ActionResult<ChatResponseDto>> Ask([FromBody] ChatRequestDto request)

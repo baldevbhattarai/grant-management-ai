@@ -593,6 +593,58 @@ public class ChatbotService(
             .Take(5)
             .ToList();
     }
+
+    public async Task<CompareGrantsResponseDto> CompareGrantsAsync(CompareGrantsRequestDto request)
+    {
+        if (request.GrantIds.Count == 0)
+            return new CompareGrantsResponseDto { Success = false, ErrorMessage = "At least one grant ID is required" };
+
+        // Retrieve context from all grants in parallel (max 5)
+        var grantIds = request.GrantIds.Distinct().Take(5).ToList();
+        var contextTasks = grantIds.Select(async grantId =>
+        {
+            var grant = await grantRepo.GetByIdAsync(grantId);
+            if (grant is null) return (grantId, null as Core.Entities.Grant, new List<ChatSourceDto>(), string.Empty, (float?)null);
+            var (sources, context, score) = await BuildContextAsync(request.Question, grantId);
+            return (grantId, grant, sources, context, score);
+        }).ToList();
+
+        var results = await Task.WhenAll(contextTasks);
+
+        // Build a combined prompt with each grant's context clearly labelled
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"Compare the following grants in response to: {request.Question}");
+        sb.AppendLine();
+
+        var grantContextSummaries = new List<GrantContextSummary>();
+        foreach (var (grantId, grant, sources, context, score) in results)
+        {
+            if (grant is null) continue;
+            sb.AppendLine($"=== Grant {grant.GrantNumber} ({grant.GrantType}) — {grant.ProgramName} ===");
+            if (string.IsNullOrWhiteSpace(context) || context.Contains("No relevant"))
+                sb.AppendLine("No relevant report content found for this grant.");
+            else
+                sb.AppendLine(context);
+            sb.AppendLine();
+            grantContextSummaries.Add(new GrantContextSummary(grantId, grant.GrantNumber, sources.Count, score));
+        }
+
+        if (!grantContextSummaries.Any())
+            return new CompareGrantsResponseDto { Success = false, ErrorMessage = "None of the specified grants were found" };
+
+        var systemPrompt = "You are an analyst comparing HRSA grant performance reports. Answer based only on the provided context. Be concise and highlight similarities and differences.";
+        var result = await openAI.CompleteAsync(systemPrompt, sb.ToString(), maxTokens: 500);
+
+        if (!result.Success)
+            return new CompareGrantsResponseDto { Success = false, ErrorMessage = result.Error };
+
+        return new CompareGrantsResponseDto
+        {
+            Success = true,
+            Answer = result.Content,
+            GrantContexts = grantContextSummaries
+        };
+    }
 }
 
 // Allows string[] as dictionary key by comparing element equality
