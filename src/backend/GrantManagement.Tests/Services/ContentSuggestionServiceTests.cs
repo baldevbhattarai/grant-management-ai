@@ -51,7 +51,7 @@ public class ContentSuggestionServiceTests
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>()))
                .ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
                .ReturnsAsync(new OpenAIResult(true, "Generated narrative text.", 500, 300, null));
 
         // Act
@@ -83,7 +83,7 @@ public class ContentSuggestionServiceTests
         _aiRepo.Setup(r => r.FindExamplesAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<int>()))
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
                .ReturnsAsync(new OpenAIResult(false, null, 0, 0, "API key not configured"));
 
         // Act
@@ -135,8 +135,8 @@ public class ContentSuggestionServiceTests
         _aiRepo.Setup(r => r.FindExamplesAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<Guid>(), It.IsAny<int>()))
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
-               .Callback<string, string, int>((_, user, _) => capturedUserPrompts.Add(user))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
+               .Callback<string, string, int, bool>((_, user, _, _) => capturedUserPrompts.Add(user))
                .ReturnsAsync(new OpenAIResult(true, "Result", 100, 100, null));
 
         // Act

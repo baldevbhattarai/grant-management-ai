@@ -7,40 +7,43 @@ namespace GrantManagement.Services.AI;
 
 public interface IOpenAIService
 {
-    Task<OpenAIResult> CompleteAsync(string systemPrompt, string userPrompt, int maxTokens = 1500);
-    IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500);
+    /// <param name="preferFast">When true, routes to the configured fast/lightweight model for simple queries.</param>
+    Task<OpenAIResult> CompleteAsync(string systemPrompt, string userPrompt, int maxTokens = 1500, bool preferFast = false);
+    IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500, bool preferFast = false);
 }
 
 public record OpenAIResult(bool Success, string? Content, int PromptTokens, int CompletionTokens, string? Error);
 
 public class OpenAIService(IHttpClientFactory httpClientFactory, IConfiguration config, ILogger<OpenAIService> logger) : IOpenAIService
 {
-    public async Task<OpenAIResult> CompleteAsync(string systemPrompt, string userPrompt, int maxTokens = 1500)
+    public async Task<OpenAIResult> CompleteAsync(string systemPrompt, string userPrompt, int maxTokens = 1500, bool preferFast = false)
     {
         var provider = config["AI:Provider"] ?? "Ollama";
 
         return provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
-            ? await CallClaude(systemPrompt, userPrompt, maxTokens)
-            : await CallOllama(systemPrompt, userPrompt, maxTokens);
+            ? await CallClaude(systemPrompt, userPrompt, maxTokens, preferFast)
+            : await CallOllama(systemPrompt, userPrompt, maxTokens, preferFast);
     }
 
-    public async IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500)
+    public async IAsyncEnumerable<string> StreamAsync(string systemPrompt, string userPrompt, int maxTokens = 1500, bool preferFast = false)
     {
         var provider = config["AI:Provider"] ?? "Ollama";
 
         var stream = provider.Equals("Claude", StringComparison.OrdinalIgnoreCase)
-            ? StreamClaude(systemPrompt, userPrompt, maxTokens)
-            : StreamOllama(systemPrompt, userPrompt, maxTokens);
+            ? StreamClaude(systemPrompt, userPrompt, maxTokens, preferFast)
+            : StreamOllama(systemPrompt, userPrompt, maxTokens, preferFast);
 
         await foreach (var token in stream)
             yield return token;
     }
 
     // ── Ollama streaming ──────────────────────────────────────────────────────
-    private async IAsyncEnumerable<string> StreamOllama(string systemPrompt, string userPrompt, int maxTokens)
+    private async IAsyncEnumerable<string> StreamOllama(string systemPrompt, string userPrompt, int maxTokens, bool preferFast = false)
     {
         var baseUrl = config["AI:Ollama:BaseUrl"] ?? "http://localhost:11434/v1";
-        var model = config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b";
+        var model = preferFast
+            ? (config["AI:Ollama:FastModel"] ?? config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b")
+            : (config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b");
         var url = $"{baseUrl.TrimEnd('/')}/chat/completions";
 
         var client = httpClientFactory.CreateClient("openai");
@@ -93,10 +96,12 @@ public class OpenAIService(IHttpClientFactory httpClientFactory, IConfiguration 
     }
 
     // ── Claude streaming ──────────────────────────────────────────────────────
-    private async IAsyncEnumerable<string> StreamClaude(string systemPrompt, string userPrompt, int maxTokens)
+    private async IAsyncEnumerable<string> StreamClaude(string systemPrompt, string userPrompt, int maxTokens, bool preferFast = false)
     {
         var apiKey = config["AI:Claude:ApiKey"];
-        var model = config["AI:Claude:Model"] ?? "claude-haiku-4-5-20251001";
+        var model = preferFast
+            ? (config["AI:Claude:FastModel"] ?? "claude-haiku-4-5-20251001")
+            : (config["AI:Claude:Model"] ?? "claude-haiku-4-5-20251001");
 
         if (string.IsNullOrWhiteSpace(apiKey)) yield break;
 
@@ -146,10 +151,12 @@ public class OpenAIService(IHttpClientFactory httpClientFactory, IConfiguration 
     }
 
     // ── Ollama (OpenAI-compatible) ────────────────────────────────────────────
-    private async Task<OpenAIResult> CallOllama(string systemPrompt, string userPrompt, int maxTokens)
+    private async Task<OpenAIResult> CallOllama(string systemPrompt, string userPrompt, int maxTokens, bool preferFast = false)
     {
         var baseUrl = config["AI:Ollama:BaseUrl"] ?? "http://localhost:11434/v1";
-        var model = config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b";
+        var model = preferFast
+            ? (config["AI:Ollama:FastModel"] ?? config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b")
+            : (config["AI:Ollama:Model"] ?? "qwen2.5-coder:7b");
         var url = $"{baseUrl.TrimEnd('/')}/chat/completions";
 
         var client = httpClientFactory.CreateClient("openai");
@@ -208,10 +215,12 @@ public class OpenAIService(IHttpClientFactory httpClientFactory, IConfiguration 
     }
 
     // ── Claude (Anthropic) ────────────────────────────────────────────────────
-    private async Task<OpenAIResult> CallClaude(string systemPrompt, string userPrompt, int maxTokens)
+    private async Task<OpenAIResult> CallClaude(string systemPrompt, string userPrompt, int maxTokens, bool preferFast = false)
     {
         var apiKey = config["AI:Claude:ApiKey"];
-        var model = config["AI:Claude:Model"] ?? "claude-haiku-4-5-20251001";
+        var model = preferFast
+            ? (config["AI:Claude:FastModel"] ?? "claude-haiku-4-5-20251001")
+            : (config["AI:Claude:Model"] ?? "claude-haiku-4-5-20251001");
 
         if (string.IsNullOrWhiteSpace(apiKey))
         {

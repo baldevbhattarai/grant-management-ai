@@ -76,7 +76,7 @@ public class ChatbotServiceTests
         _aiRepo.Setup(r => r.SearchSectionsAsync(grantId, It.IsAny<string>(), It.IsAny<int>()))
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
                .ReturnsAsync(new OpenAIResult(true, "You served 2,850 patients in Q1 2024.", 200, 80, null));
 
         var result = await CreateSut().AskAsync(new ChatRequestDto
@@ -100,7 +100,7 @@ public class ChatbotServiceTests
         _aiRepo.Setup(r => r.SearchSectionsAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()))
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
                .ReturnsAsync(new OpenAIResult(false, null, 0, 0, "Timeout"));
 
         var result = await CreateSut().AskAsync(new ChatRequestDto
@@ -137,7 +137,7 @@ public class ChatbotServiceTests
         _aiRepo.Setup(r => r.SearchSectionsAsync(grantId, It.IsAny<string>(), It.IsAny<int>()))
                .ReturnsAsync([section]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
-        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
+        _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<bool>()))
                .ReturnsAsync(new OpenAIResult(true, "Answer with sources", 200, 80, null));
 
         var result = await CreateSut().AskAsync(new ChatRequestDto

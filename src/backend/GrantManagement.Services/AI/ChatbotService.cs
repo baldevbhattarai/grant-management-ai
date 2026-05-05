@@ -63,8 +63,9 @@ public class ChatbotService(
         var systemPrompt = BuildSystemPrompt(grant, confidenceScore);
         var userPrompt = BuildUserPrompt(request.Question, contextBlock, history);
 
-        // 7. Call LLM
-        var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 300);
+        // 7. Call LLM — use fast model for short/simple questions when smart routing is enabled
+        var useFastModel = config["AI:SmartRouting:Enabled"] == "true" && IsSimpleQuery(standaloneQuestion);
+        var result = await openAI.CompleteAsync(systemPrompt, userPrompt, maxTokens: 300, preferFast: useFastModel);
 
         sw.Stop();
 
@@ -145,7 +146,8 @@ public class ChatbotService(
         // Yield the conversation ID as the very first SSE token so the client can track the session
         yield return $"[SESSION:{sessionId}]";
 
-        await foreach (var token in openAI.StreamAsync(systemPrompt, userPrompt, maxTokens: 300))
+        var useFastStream = config["AI:SmartRouting:Enabled"] == "true" && IsSimpleQuery(standaloneQuestion);
+        await foreach (var token in openAI.StreamAsync(systemPrompt, userPrompt, maxTokens: 300, preferFast: useFastStream))
         {
             fullAnswer.Append(token);
             yield return token;
@@ -592,6 +594,20 @@ public class ChatbotService(
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(5)
             .ToList();
+    }
+
+    // Returns true for short, fact-lookup questions that don't need deep analytical reasoning.
+    // Used to route to the lightweight model when AI:SmartRouting:Enabled=true.
+    private static bool IsSimpleQuery(string question)
+    {
+        var lower = question.ToLowerInvariant().Trim();
+        if (lower.Length > 120) return false;
+
+        var complexSignals = new[] { "compare", "analyz", "explain why", "trend", "over time", "summarize all", "across", "difference between" };
+        if (complexSignals.Any(lower.Contains)) return false;
+
+        var simpleSignals = new[] { "how many", "what is", "what was", "list", "show me", "when did", "who is", "where" };
+        return simpleSignals.Any(lower.Contains) || lower.Length < 50;
     }
 
     public async Task<CompareGrantsResponseDto> CompareGrantsAsync(CompareGrantsRequestDto request)
