@@ -1,3 +1,4 @@
+using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Entities;
 
 namespace GrantManagement.Core.Interfaces;
@@ -18,4 +19,7 @@ public interface IAIRepository
 
     /// <summary>Returns the most recent reports for a grant regardless of section.</summary>
     Task<List<Report>> GetRecentReportsAsync(Guid grantId, int topN = 4);
+
+    /// <summary>Returns aggregated AI usage statistics for the specified number of days.</summary>
+    Task<UsageSummaryDto> GetUsageSummaryAsync(int days = 30);
 }

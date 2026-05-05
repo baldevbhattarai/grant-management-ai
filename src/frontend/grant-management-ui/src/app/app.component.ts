@@ -17,6 +17,9 @@ import { ChatWidgetComponent } from './features/ai/chat-widget/chat-widget.compo
       <a mat-button routerLink="/dashboard">
         <mat-icon>dashboard</mat-icon> Dashboard
       </a>
+      <a mat-button routerLink="/admin/usage">
+        <mat-icon>analytics</mat-icon> Usage
+      </a>
     </mat-toolbar>
 
     <main class="main-content">

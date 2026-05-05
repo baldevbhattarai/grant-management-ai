@@ -17,5 +17,10 @@ export const routes: Routes = [
     loadComponent: () =>
       import('./features/reports/report-form.component').then(m => m.ReportFormComponent)
   },
+  {
+    path: 'admin/usage',
+    loadComponent: () =>
+      import('./features/admin/usage-dashboard.component').then(m => m.UsageDashboardComponent)
+  },
   { path: '**', redirectTo: 'dashboard' }
 ];

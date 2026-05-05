@@ -1,3 +1,4 @@
+using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Entities;
 using GrantManagement.Core.Interfaces;
 using GrantManagement.Infrastructure.Data;
@@ -102,5 +103,72 @@ public class AIRepository(ApplicationDbContext db) : IAIRepository
             .ThenByDescending(r => r.ReportingQuarter)
             .Take(topN)
             .ToListAsync();
+    }
+
+    public async Task<UsageSummaryDto> GetUsageSummaryAsync(int days = 30)
+    {
+        var since = DateTime.UtcNow.AddDays(-days);
+        var logs = await db.AIUsageLogs
+            .Where(l => l.CreatedDate >= since)
+            .ToListAsync();
+
+        if (logs.Count == 0)
+            return new UsageSummaryDto();
+
+        var totalRequests = logs.Count;
+        var successful = logs.Count(l => l.Success);
+        var totalTokens = logs.Sum(l => (long)(l.TotalTokens ?? 0));
+        var totalCost = logs.Sum(l => l.EstimatedCost ?? 0m);
+        var avgResponseMs = logs.Where(l => l.ResponseTimeMs.HasValue).Select(l => (double)l.ResponseTimeMs!.Value)
+            .DefaultIfEmpty(0).Average();
+
+        var byFeature = logs
+            .GroupBy(l => l.FeatureType)
+            .Select(g => new UsageByFeatureDto(
+                g.Key,
+                g.Count(),
+                g.Sum(l => (long)(l.TotalTokens ?? 0)),
+                g.Sum(l => l.EstimatedCost ?? 0m),
+                g.Where(l => l.ResponseTimeMs.HasValue).Select(l => (double)l.ResponseTimeMs!.Value).DefaultIfEmpty(0).Average(),
+                g.Count() == 0 ? 0 : (double)g.Count(l => l.Success) / g.Count() * 100))
+            .OrderByDescending(f => f.Requests)
+            .ToList();
+
+        var byDay = logs
+            .GroupBy(l => l.CreatedDate.Date)
+            .Select(g => new UsageByDayDto(
+                g.Key.ToString("yyyy-MM-dd"),
+                g.Count(),
+                g.Sum(l => (long)(l.TotalTokens ?? 0)),
+                g.Sum(l => l.EstimatedCost ?? 0m)))
+            .OrderBy(d => d.Date)
+            .ToList();
+
+        var topGrants = logs
+            .GroupBy(l => l.GrantId)
+            .Select(g => new { GrantId = g.Key, Requests = g.Count(), Tokens = g.Sum(l => (long)(l.TotalTokens ?? 0)), Cost = g.Sum(l => l.EstimatedCost ?? 0m) })
+            .OrderByDescending(g => g.Requests)
+            .Take(5)
+            .ToList();
+
+        var grantNumbers = await db.Grants
+            .Where(g => topGrants.Select(t => t.GrantId).Contains(g.GrantId))
+            .ToDictionaryAsync(g => g.GrantId, g => g.GrantNumber);
+
+        var topGrantDtos = topGrants.Select(g => new TopGrantUsageDto(
+            g.GrantId, grantNumbers.GetValueOrDefault(g.GrantId, "Unknown"), g.Requests, g.Tokens, g.Cost)).ToList();
+
+        return new UsageSummaryDto
+        {
+            TotalRequests = totalRequests,
+            SuccessfulRequests = successful,
+            TotalTokens = totalTokens,
+            TotalCost = totalCost,
+            AvgResponseTimeMs = avgResponseMs,
+            SuccessRate = totalRequests == 0 ? 0 : (double)successful / totalRequests * 100,
+            ByFeature = byFeature,
+            ByDay = byDay,
+            TopGrants = topGrantDtos
+        };
     }
 }
