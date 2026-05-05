@@ -266,6 +266,17 @@ public class ChatbotService(
             queryVariants.AddRange(extras);
         }
 
+        // HyDE: embed a hypothetical answer — its vector lands closer to real document chunks
+        if (config["AI:HyDE:Enabled"] == "true")
+        {
+            var hypothetical = await GenerateHypotheticalAnswerAsync(question);
+            if (hypothetical is not null)
+            {
+                queryVariants.Add(hypothetical);
+                logger.LogDebug("HyDE hypothetical answer added as extra query variant");
+            }
+        }
+
         // Embed all variants and run keyword search concurrently
         var keywords = ExtractKeywords(question);
         var embedTasks = queryVariants.Select(q => embeddingService.EmbedAsync(q)).ToList();
@@ -404,6 +415,26 @@ public class ChatbotService(
             .Take(topN)
             .Select(kvp => resultMap[kvp.Key] with { Score = (float)kvp.Value })
             .ToList();
+    }
+
+    // HyDE: generates a short hypothetical passage that would answer the question.
+    // Its embedding typically lands closer to real document chunks than the raw question.
+    private async Task<string?> GenerateHypotheticalAnswerAsync(string question)
+    {
+        var prompt = $"""
+            Write a 2-3 sentence passage that would be a plausible excerpt from an HRSA grant progress report answering this question.
+            Question: {question}
+            Write only the passage text — no preamble, no explanation.
+            """;
+
+        var result = await openAI.CompleteAsync(
+            "You are generating a hypothetical document excerpt to improve semantic retrieval.",
+            prompt,
+            maxTokens: 100);
+
+        return result.Success && !string.IsNullOrWhiteSpace(result.Content)
+            ? result.Content.Trim()
+            : null;
     }
 
     // Uses the LLM to produce 3 paraphrase variants of a question, broadening vector recall.
