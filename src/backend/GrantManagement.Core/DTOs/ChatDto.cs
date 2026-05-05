@@ -29,3 +29,11 @@ public class ChatSourceDto
     /// <summary>Report ID for deep-linking to the source section in the UI.</summary>
     public Guid? ReportId { get; set; }
 }
+
+public record ChatSessionSummary(
+    Guid SessionId,
+    string FirstQuestion,
+    string? Summary,
+    int MessageCount,
+    DateTime StartedAt,
+    DateTime LastActivityAt);

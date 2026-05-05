@@ -7,7 +7,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ChatService } from '../../../core/services/chat.service';
+import { ChatService, ChatSessionSummary } from '../../../core/services/chat.service';
 import { ChatMessage } from '../../../core/models/ai.model';
 import { GrantService } from '../../../core/services/grant.service';
 import { UserService } from '../../../core/services/user.service';
@@ -32,7 +32,11 @@ import { SessionService } from '../../../core/services/session.service';
     <div class="chat-panel" [class.visible]="open">
       <div class="chat-header">
         <mat-icon>smart_toy</mat-icon>
-        <span>Grant Q&amp;A Assistant</span>
+        <span>{{ showHistory ? 'Past Sessions' : 'Grant Q&A Assistant' }}</span>
+        <button mat-icon-button class="header-btn" matTooltip="Session history"
+          (click)="toggleHistory()">
+          <mat-icon>{{ showHistory ? 'chat' : 'history' }}</mat-icon>
+        </button>
         <button mat-icon-button class="close-btn" (click)="togglePanel()">
           <mat-icon>close</mat-icon>
         </button>
@@ -46,8 +50,25 @@ import { SessionService } from '../../../core/services/session.service';
         </select>
       </div>
 
+      <!-- History panel -->
+      <div class="history-panel" *ngIf="showHistory">
+        <div *ngIf="sessionsLoading" class="history-loading">
+          <mat-spinner diameter="28"></mat-spinner>
+        </div>
+        <div *ngIf="!sessionsLoading && sessions.length === 0" class="history-empty">
+          <mat-icon>chat_bubble_outline</mat-icon>
+          <p>No past sessions yet.</p>
+        </div>
+        <div *ngFor="let s of sessions" class="session-item" (click)="resumeSession(s)">
+          <div class="session-q">{{ s.firstQuestion }}</div>
+          <div class="session-meta">
+            {{ s.messageCount }} messages &middot; {{ s.lastActivityAt | date:'MMM d, h:mm a' }}
+          </div>
+        </div>
+      </div>
+
       <!-- Messages -->
-      <div class="messages" #messagesContainer>
+      <div class="messages" #messagesContainer *ngIf="!showHistory">
         <div class="welcome-msg" *ngIf="messages.length === 0">
           <mat-icon>auto_awesome</mat-icon>
           <p>Ask me anything about your grant reports!</p>
@@ -96,7 +117,7 @@ import { SessionService } from '../../../core/services/session.service';
       </div>
 
       <!-- Input -->
-      <div class="chat-input">
+      <div class="chat-input" *ngIf="!showHistory">
         <input #inputEl type="text" [(ngModel)]="currentQuestion"
           placeholder="Ask a question about your grants…"
           (keydown.enter)="send()"
@@ -183,6 +204,19 @@ import { SessionService } from '../../../core/services/session.service';
       padding: 8px 14px; font-size: 0.88rem; outline: none;
     }
     .chat-input input:focus { border-color: #6a1b9a; }
+    .header-btn { color: rgba(255,255,255,0.8); }
+    .header-btn:hover { color: white; }
+    .history-panel { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .history-loading { display: flex; justify-content: center; padding: 24px; }
+    .history-empty { text-align: center; padding: 32px 16px; color: #aaa; }
+    .history-empty mat-icon { font-size: 36px; width: 36px; height: 36px; }
+    .session-item {
+      padding: 10px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid #e0e0e0; transition: background 0.15s;
+    }
+    .session-item:hover { background: #f3e5f5; border-color: #ce93d8; }
+    .session-q { font-size: 0.85rem; color: #333; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .session-meta { font-size: 0.72rem; color: #999; margin-top: 2px; }
   `]
 })
 export class ChatWidgetComponent implements AfterViewChecked {
@@ -196,6 +230,9 @@ export class ChatWidgetComponent implements AfterViewChecked {
   open = false;
   loading = false;
   currentQuestion = '';
+  showHistory = false;
+  sessions: ChatSessionSummary[] = [];
+  sessionsLoading = false;
   messages: ChatMessage[] = [];
   conversationId: string | undefined;
   selectedGrantId = '';
@@ -247,6 +284,32 @@ export class ChatWidgetComponent implements AfterViewChecked {
   clearChat() {
     this.messages = [];
     this.conversationId = undefined;
+  }
+
+  toggleHistory() {
+    this.showHistory = !this.showHistory;
+    if (this.showHistory && this.selectedGrantId && this.session.userId) {
+      this.sessionsLoading = true;
+      this.chatService.getSessions(this.session.userId, this.selectedGrantId).subscribe({
+        next: sessions => { this.sessions = sessions; this.sessionsLoading = false; },
+        error: () => { this.sessionsLoading = false; }
+      });
+    }
+  }
+
+  resumeSession(session: ChatSessionSummary) {
+    this.conversationId = session.sessionId;
+    this.showHistory = false;
+    this.messages = [];
+    // Load the session history and display it
+    this.chatService.getSessionHistory(session.sessionId).subscribe({
+      next: msgs => {
+        this.messages = msgs
+          .filter(m => m.role === 'user' || m.role === 'assistant')
+          .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content, timestamp: new Date(m.createdDate) }));
+      },
+      error: () => {}
+    });
   }
 
   askSample(q: string) {

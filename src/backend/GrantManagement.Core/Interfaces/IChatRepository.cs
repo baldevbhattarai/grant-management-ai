@@ -1,3 +1,4 @@
+using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Entities;
 
 namespace GrantManagement.Core.Interfaces;
@@ -15,4 +16,7 @@ public interface IChatRepository
 
     /// <summary>Replaces all existing messages for a session with a single summary row.</summary>
     Task ReplaceTurnsWithSummaryAsync(Guid sessionId, Guid userId, Guid grantId, string summary);
+
+    /// <summary>Returns session summaries for a user and grant, most recent first.</summary>
+    Task<List<ChatSessionSummary>> GetSessionsAsync(Guid userId, Guid grantId, int maxSessions = 20);
 }
