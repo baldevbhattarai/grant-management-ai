@@ -19,6 +19,7 @@ public class ChatbotService(
 {
     private const int MaxHistoryTurns = 5;
     private const int SummarizationThreshold = 8; // summarize after 8 turns to keep context tight
+    private static readonly EventId RetrievalQualityEventId = new(1001, "RetrievalQuality");
 
     public async Task<ChatResponseDto> AskAsync(ChatRequestDto request)
     {
@@ -37,7 +38,9 @@ public class ChatbotService(
 
         // 4. Rewrite vague/contextual questions into standalone queries before embedding
         var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
-        logger.LogDebug("Query rewrite: '{Original}' → '{Rewritten}'", request.Question, standaloneQuestion);
+        logger.LogInformation(RetrievalQualityEventId,
+            "QueryRewrite grant={GrantId} original={Original} rewritten={Rewritten}",
+            request.GrantId, request.Question, standaloneQuestion);
 
         // 5. Detect structured data intent — if the user asks for numbers/metrics, query DB directly
         List<ChatSourceDto> sources;
@@ -117,6 +120,9 @@ public class ChatbotService(
 
         var history = await chatRepo.GetHistoryAsync(sessionId, MaxHistoryTurns);
         var standaloneQuestion = await RewriteQuestionAsync(request.Question, history);
+        logger.LogInformation(RetrievalQualityEventId,
+            "QueryRewrite grant={GrantId} original={Original} rewritten={Rewritten}",
+            request.GrantId, request.Question, standaloneQuestion);
 
         string contextBlock;
         float? confidenceScore;
@@ -341,8 +347,13 @@ public class ChatbotService(
             label += " + reranked";
         }
 
-        logger.LogDebug("Hybrid RAG [{Label}]: {VectorCount} vector + {KeywordCount} keyword → {MergedCount} merged",
-            label, vectorResults.Count, keywordResults.Count, merged.Count);
+        logger.LogInformation(RetrievalQualityEventId,
+            "RetrievalQuality grant={GrantId} method={Method} queryVariants={QueryVariants} " +
+            "hyde={HyDE} vectorResults={VectorResults} keywordResults={KeywordResults} " +
+            "mergedChunks={MergedChunks} topScore={TopScore}",
+            grantId, label, queryVariants.Count,
+            config["AI:HyDE:Enabled"] == "true",
+            vectorResults.Count, keywordResults.Count, merged.Count, maxScore);
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Report context ({label} search):");
