@@ -12,6 +12,7 @@ public class ChatbotService(
     IEmbeddingService embeddingService,
     IVectorSearchService vectorService,
     IChatRepository chatRepo,
+    IRerankService rerankService,
     ILogger<ChatbotService> logger) : IChatbotService
 {
     private const int MaxHistoryTurns = 5;
@@ -304,6 +305,15 @@ public class ChatbotService(
 
         var label = (hasVector && hasKeyword) ? "hybrid (semantic + keyword)" : hasVector ? "semantic" : "keyword";
         var maxScore = hasVector ? vectorResults.Max(r => r.Score) : (float?)null;
+
+        // Re-rank fused results with cross-encoder if Cohere API key is configured
+        if (rerankService.IsEnabled && merged.Count > 1)
+        {
+            var docs = merged.Select(r => r.ResponseText).ToList();
+            var rerankedIndices = await rerankService.RerankAsync(question, docs, topN: merged.Count);
+            merged = rerankedIndices.Select(i => merged[i]).ToList();
+            label += " + reranked";
+        }
 
         logger.LogDebug("Hybrid RAG [{Label}]: {VectorCount} vector + {KeywordCount} keyword → {MergedCount} merged",
             label, vectorResults.Count, keywordResults.Count, merged.Count);

@@ -126,7 +126,8 @@ public class ContentSuggestionServiceTests
         var reportId = Guid.NewGuid();
         var grant = new Grant { GrantId = grantId, GrantNumber = "GX-2024-00001", ProgramTypeCode = 60 };
         var report = new Report { ReportId = reportId, GrantId = grantId, Grant = grant, Sections = [] };
-        string? capturedUserPrompt = null;
+        // Collect all CompleteAsync calls — generation is first, scoring is second
+        var capturedUserPrompts = new List<string>();
 
         _reportRepo.Setup(r => r.GetByIdWithSectionsAsync(reportId)).ReturnsAsync(report);
         _aiRepo.Setup(r => r.GetPreviousReportContentAsync(grantId, It.IsAny<string>()))
@@ -135,7 +136,7 @@ public class ContentSuggestionServiceTests
                .ReturnsAsync([]);
         _aiRepo.Setup(r => r.LogUsageAsync(It.IsAny<AIUsageLog>())).ReturnsAsync(Guid.NewGuid());
         _openAI.Setup(o => o.CompleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>()))
-               .Callback<string, string, int>((_, user, _) => capturedUserPrompt = user)
+               .Callback<string, string, int>((_, user, _) => capturedUserPrompts.Add(user))
                .ReturnsAsync(new OpenAIResult(true, "Result", 100, 100, null));
 
         // Act
@@ -146,9 +147,9 @@ public class ContentSuggestionServiceTests
             UserId = Guid.NewGuid()
         });
 
-        // Assert
-        Assert.NotNull(capturedUserPrompt);
-        Assert.Contains("PREVIOUS CONTENT MARKER", capturedUserPrompt);
+        // Assert — first call is the generation prompt; second call is the quality-scoring prompt
+        Assert.NotEmpty(capturedUserPrompts);
+        Assert.Contains("PREVIOUS CONTENT MARKER", capturedUserPrompts[0]);
     }
 
     // ── Feedback ──────────────────────────────────────────────────────────────

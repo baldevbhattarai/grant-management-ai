@@ -18,9 +18,12 @@ builder.Services.AddScoped<IChatRepository, ChatRepository>();
 
 // ── AI Services ───────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient("openai");
+builder.Services.AddHttpClient("cohere");
 builder.Services.AddScoped<IOpenAIService, OpenAIService>();
 builder.Services.AddScoped<IContentSuggestionService, ContentSuggestionService>();
 builder.Services.AddScoped<IChatbotService, ChatbotService>();
+// Re-ranking via Cohere API — optional, degrades gracefully if AI:Rerank:Cohere:ApiKey is not set
+builder.Services.AddScoped<IRerankService, CohereRerankService>();
 
 // ── Vector Search (Qdrant) ────────────────────────────────────────────────────
 builder.Services.AddScoped<IEmbeddingService, EmbeddingService>();

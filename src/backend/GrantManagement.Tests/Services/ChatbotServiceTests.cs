@@ -15,6 +15,7 @@ public class ChatbotServiceTests
     private readonly Mock<IEmbeddingService> _embedding = new();
     private readonly Mock<IVectorSearchService> _vectorSearch = new();
     private readonly Mock<IChatRepository> _chatRepo = new();
+    private readonly Mock<IRerankService> _rerank = new();
 
     public ChatbotServiceTests()
     {
@@ -27,12 +28,17 @@ public class ChatbotServiceTests
                  .ReturnsAsync([]);
         _chatRepo.Setup(c => c.SaveTurnAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>()))
                  .Returns(Task.CompletedTask);
+        // Re-ranking disabled by default in tests
+        _rerank.Setup(r => r.IsEnabled).Returns(false);
+        // Structured data query returns empty by default
+        _aiRepo.Setup(r => r.GetStructuredDataAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<int>()))
+               .ReturnsAsync([]);
     }
 
     private ChatbotService CreateSut() =>
         new(_grantRepo.Object, _aiRepo.Object, _openAI.Object,
             _embedding.Object, _vectorSearch.Object,
-            _chatRepo.Object, NullLogger<ChatbotService>.Instance);
+            _chatRepo.Object, _rerank.Object, NullLogger<ChatbotService>.Instance);
 
     [Fact]
     public async Task Ask_WhenGrantNotFound_ReturnsFailure()
