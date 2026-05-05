@@ -1,6 +1,7 @@
 using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Entities;
 using GrantManagement.Core.Interfaces;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace GrantManagement.Services.AI;
@@ -13,6 +14,7 @@ public class ChatbotService(
     IVectorSearchService vectorService,
     IChatRepository chatRepo,
     IRerankService rerankService,
+    IConfiguration config,
     ILogger<ChatbotService> logger) : IChatbotService
 {
     private const int MaxHistoryTurns = 5;
@@ -252,22 +254,21 @@ public class ChatbotService(
             : question;
     }
 
-    // Hybrid RAG: runs vector search and keyword search in parallel, fuses results with
-    // Reciprocal Rank Fusion (RRF). Falls back to keyword-only if vector search fails.
+    // Hybrid RAG: runs vector search (optionally multi-query) and keyword search in parallel,
+    // fuses results with Reciprocal Rank Fusion (RRF). Falls back to keyword-only if vector fails.
     private async Task<(List<ChatSourceDto>, string, float?)> BuildContextAsync(string question, Guid grantId)
     {
-        // Embed and keyword-extract in parallel
-        var embedTask = embeddingService.EmbedAsync(question);
-        var keywords = ExtractKeywords(question);
-        var queryVector = await embedTask;
-
-        // Launch both searches concurrently
-        var vectorTask = Task.Run(async () =>
+        // Multi-query: generate paraphrase variants so vector search covers more ground
+        var queryVariants = new List<string> { question };
+        if (config["AI:MultiQuery:Enabled"] == "true")
         {
-            try { return await vectorService.SearchAsync(queryVector, grantId, topN: 5, minScore: 0.4f); }
-            catch (Exception ex) { logger.LogWarning(ex, "Vector search failed — using keyword results only"); return new List<VectorSearchResult>(); }
-        });
+            var extras = await GenerateQueryVariantsAsync(question);
+            queryVariants.AddRange(extras);
+        }
 
+        // Embed all variants and run keyword search concurrently
+        var keywords = ExtractKeywords(question);
+        var embedTasks = queryVariants.Select(q => embeddingService.EmbedAsync(q)).ToList();
         var keywordTask = Task.Run(async () =>
         {
             var sections = new List<ReportSection>();
@@ -276,9 +277,23 @@ public class ChatbotService(
             return sections.DistinctBy(s => s.SectionId).Take(5).ToList();
         });
 
-        await Task.WhenAll(vectorTask, keywordTask);
+        var queryVectors = await Task.WhenAll(embedTasks);
 
-        var vectorResults = vectorTask.Result;
+        // Vector search for every variant in parallel
+        var vectorSearchTasks = queryVectors.Select(v => Task.Run(async () =>
+        {
+            try { return await vectorService.SearchAsync(v, grantId, topN: 5, minScore: 0.4f); }
+            catch (Exception ex) { logger.LogWarning(ex, "Vector search failed — using keyword results only"); return new List<VectorSearchResult>(); }
+        })).ToList();
+
+        await Task.WhenAll([.. vectorSearchTasks, keywordTask]);
+
+        // Merge vector results across variants with RRF when multi-query was used
+        var allVectorResultSets = vectorSearchTasks.Select(t => t.Result).ToList();
+        var vectorResults = allVectorResultSets.Count == 1
+            ? allVectorResultSets[0]
+            : FuseMultiQueryRRF(allVectorResultSets, topN: 5);
+
         var keywordSections = keywordTask.Result;
 
         // Convert keyword sections to VectorSearchResult for unified RRF input
@@ -364,6 +379,56 @@ public class ChatbotService(
             .OrderByDescending(kvp => kvp.Value)
             .Take(topN)
             .Select(kvp => resultMap[kvp.Key] with { Score = (float)kvp.Value })
+            .ToList();
+    }
+
+    // Multi-query RRF: merges vector results from multiple query variants.
+    private static List<VectorSearchResult> FuseMultiQueryRRF(
+        List<List<VectorSearchResult>> resultSets, int topN = 5, int k = 60)
+    {
+        var scores = new Dictionary<Guid, double>();
+        var resultMap = new Dictionary<Guid, VectorSearchResult>();
+
+        foreach (var resultSet in resultSets)
+        {
+            for (var i = 0; i < resultSet.Count; i++)
+            {
+                var r = resultSet[i];
+                scores[r.SectionId] = scores.GetValueOrDefault(r.SectionId) + 1.0 / (k + i + 1);
+                resultMap.TryAdd(r.SectionId, r);
+            }
+        }
+
+        return scores
+            .OrderByDescending(kvp => kvp.Value)
+            .Take(topN)
+            .Select(kvp => resultMap[kvp.Key] with { Score = (float)kvp.Value })
+            .ToList();
+    }
+
+    // Uses the LLM to produce 3 paraphrase variants of a question, broadening vector recall.
+    private async Task<List<string>> GenerateQueryVariantsAsync(string question)
+    {
+        var prompt = $"""
+            Generate 3 different phrasings to search for the answer to this question in grant progress reports.
+            Use different keywords, perspectives, or levels of specificity.
+            Original question: {question}
+            Return ONLY the 3 variants, numbered 1-3, one per line. No explanation.
+            """;
+
+        var result = await openAI.CompleteAsync(
+            "You are a query expansion assistant for document retrieval.",
+            prompt,
+            maxTokens: 120);
+
+        if (!result.Success || string.IsNullOrWhiteSpace(result.Content))
+            return [];
+
+        return result.Content
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => System.Text.RegularExpressions.Regex.Replace(l.Trim(), @"^\d+\.\s*", ""))
+            .Where(l => l.Length > 5)
+            .Take(3)
             .ToList();
     }
 

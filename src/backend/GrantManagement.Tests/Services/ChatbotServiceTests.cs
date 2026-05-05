@@ -2,6 +2,7 @@ using GrantManagement.Core.DTOs;
 using GrantManagement.Core.Entities;
 using GrantManagement.Core.Interfaces;
 using GrantManagement.Services.AI;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -35,10 +36,13 @@ public class ChatbotServiceTests
                .ReturnsAsync([]);
     }
 
+    private static IConfiguration EmptyConfig() => new ConfigurationBuilder().Build();
+
     private ChatbotService CreateSut() =>
         new(_grantRepo.Object, _aiRepo.Object, _openAI.Object,
             _embedding.Object, _vectorSearch.Object,
-            _chatRepo.Object, _rerank.Object, NullLogger<ChatbotService>.Instance);
+            _chatRepo.Object, _rerank.Object,
+            EmptyConfig(), NullLogger<ChatbotService>.Instance);
 
     [Fact]
     public async Task Ask_WhenGrantNotFound_ReturnsFailure()
